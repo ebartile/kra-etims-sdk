@@ -104,7 +104,7 @@ flowchart TD
 ```
 
 ### Phase 1: Sign Up & Device Registration
-1. Register on [eTIMS Taxpayer Sandbox Portal](https://sbx.kra.go.ke)
+1. Register on [eTIMS Taxpayer Sandbox Portal](https://etims-sbx.kra.go.ke)
 2. Submit Service Request → Select "eTIMS" → Choose "OSCU" type
 3. Await SMS confirmation of OSCU approval
 4. **Critical**: Device serial number (`dvcSrlNo`) is provisioned during this phase

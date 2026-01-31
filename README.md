@@ -1,59 +1,148 @@
-# KRA eTims Integration SDK
+# KRA eTIMS OSCU Integration SDK
 
-A PHP SDK for integrating with the Kenya Revenue Authority (KRA) Electronic Tax Invoice Management System (eTims) API for Paybill Kenya but can generally be used in any php project.
+![PHP Version](https://img.shields.io/badge/PHP-8.1%2B-777BB4?logo=php)
+![License](https://img.shields.io/badge/License-MIT-green)
+![KRA eTIMS](https://img.shields.io/badge/KRA-eTIMS_OSCU-0066CC)
+
+A production-ready PHP SDK for integrating with the Kenya Revenue Authority (KRA) **eTIMS OSCU** (Online Sales Control Unit) API. Built to match the official Postman collection specifications with strict header compliance, token management, and comprehensive validation.
+
+> ⚠️ **Critical Note**: This SDK implements the **new OSCU specification** (hosted on KRA servers), *not* the legacy eTIMS API. OSCU requires device registration, `apigee_app_id` headers, and `cmcKey` lifecycle management.
 
 ## Author
 
-Bartile Emmanuel
+**Bartile Emmanuel**  
+📧 ebartile@gmail.com | 📱 +254757807150  
+*Lead Developer, Paybill Kenya*
 
-Email: ebartile@gmail.com
+---
 
-Tel: +254757807150
+## Table of Contents
 
-## Introduction to KRA eTims
+- [Introduction to eTIMS OSCU](#introduction-to-etims-oscu)
+- [Critical Requirements](#critical-requirements)
+- [Features](#features)
+- [Installation](#installation)
+- [Configuration](#configuration)
+- [Usage Guide](#usage-guide)
+- [API Reference](#api-reference)
+- [Error Handling](#error-handling)
+- [Troubleshooting](#troubleshooting)
+- [Testing](#testing)
+- [Sandbox Setup Guide](#sandbox-setup-guide)
+- [Support](#support)
+- [License](#license)
 
-Kenya Revenue Authority currently uses an Integrated Software that collects and manages domestic tax revenues. The Electronic Tax Invoice Management System (eTims) has introduced a supply chain management capability and integration with other KRA systems.
+---
 
-### Area of Application
+## Introduction to eTIMS OSCU
 
-KRA seeks to introduce the usage of Online and Virtual Sales Control Unit (OSCU & VSCU) capable of handling a richer dataset than the traditional Electronic Tax Register system. This system includes specific requirements concerning the Trader Invoicing System to be used together with an Online or Virtual Sales Control Unit.
+KRA's **Electronic Tax Invoice Management System (eTIMS)** now uses **OSCU** (Online Sales Control Unit) – a KRA-hosted software module that validates and signs tax invoices in real-time before issuance. Unlike legacy systems, OSCU requires:
 
-### Key Definitions
+- Pre-registered device serial numbers (`dvcSrlNo`)
+- APigee-based authentication (`apigee_app_id` header)
+- Communication key (`cmcKey`) lifecycle management
+- Strict payload schema compliance per KRA specifications
 
-- **Authority**: Kenya Revenue Authority
-- **User**: A taxpayer, user of Trader Invoicing System (TIS)
-- **PIN**: Personal Identification Number
-- **Electronic Tax Invoicing Management System**: A system comprising of Trader Invoicing System and Online/Virtual Sales Control Unit connected together
-- **Trader Invoicing System (TIS)**: A system designated for use in business for efficiency management controls in areas of invoicing and stock management
-- **Receipt**: A Tax Invoice or a receipt for the provision of goods/services provided to the customer
-- **Online & Virtual Sales Control Unit (OSCU & VSCU)**: A software module communicating with both the TIS and the Authority for processing receipts
+### OSCU vs Legacy eTIMS
 
-### Receipt Types
+| Feature | OSCU (This SDK) | Legacy eTIMS |
+|---------|-----------------|--------------|
+| **Hosting** | KRA-hosted (cloud) | Self-hosted (on-premise) |
+| **Device Registration** | Mandatory pre-registration | Not required |
+| **Authentication** | Bearer token + `apigee_app_id` | Basic auth only |
+| **Communication Key** | `cmcKey` required after init | Not applicable |
+| **API Base URL** | `sbx.kra.go.ke/etims-oscu/api/v1` | `etims-api-sbx.kra.go.ke` |
+| **Header Requirements** | Strict 6-header compliance | Minimal headers |
 
-Each receipt issued by Trader Invoicing System is formed from a combination of receipt type and transaction type:
+### Data Flow
 
-1. Receipt types: NORMAL, COPY, TRAINING, PROFORMA
-2. Transaction types: SALE, CREDIT NOTE, DEBIT NOTE
+```mermaid
+sequenceDiagram
+    participant TIS as Trader Invoicing System
+    participant OSCU as KRA OSCU API
+    participant KRA as KRA Backend
 
-### Receipt Labels
+    TIS->>OSCU: 1. GET /token/generate (Basic Auth)
+    OSCU-->>TIS: Access Token
+    
+    TIS->>OSCU: 2. POST /initialize (Bearer + apigee_app_id)
+    OSCU->>KRA: Validate device serial
+    KRA-->>OSCU: Approve + return cmcKey
+    OSCU-->>TIS: cmcKey + device info
+    
+    loop Business Operations
+        TIS->>OSCU: 3. POST /salesTransaction (Bearer + apigee_app_id + tin + bhfId + cmcKey)
+        OSCU->>KRA: Validate & sign invoice
+        KRA-->>OSCU: Signed invoice data
+        OSCU-->>TIS: Signed receipt + QR code
+    end
+```
 
-| RECEIPT TYPE | TRANSACTION TYPE | RECEIPT LABEL |
-|--------------|------------------|---------------|
-| NORMAL       | SALES            | NS            |
-| NORMAL       | CREDIT NOTE      | NC            |
-| COPY         | SALES            | CS            |
-| COPY         | CREDIT NOTE      | CC            |
-| TRAINING     | SALES            | TS            |
-| TRAINING     | CREDIT NOTE      | TC            |
-| PROFORMA     | SALES            | PS            |
+---
+
+## Critical Requirements
+
+Before integration, you **MUST** complete these prerequisites:
+
+### 1. Device Registration (MANDATORY)
+- Register your OSCU device via the [eTIMS Taxpayer Sandbox Portal](https://sbx.kra.go.ke)
+- Obtain an **approved device serial number** (`dvcSrlNo`)
+- ⚠️ **Dynamic/unregistered device serials will fail with `resultCd: 901`** ("It is not valid device")
+
+### 2. APigee Credentials
+- Request `apigee_app_id` from KRA support (`timsupport@kra.go.ke`)
+- Required in **ALL requests** (including initialization)
+
+### 3. Communication Key Lifecycle
+```php
+// 1. Initialize FIRST (returns cmcKey)
+$response = $client->initialize([...]);
+$cmcKey = $response['cmcKey'];
+
+// 2. Update config with cmcKey
+$config['oscu']['cmc_key'] = $cmcKey;
+
+// 3. Recreate client with updated config
+$client = new EtimsClient($config, $auth);
+
+// 4. ALL subsequent requests require cmcKey in headers
+$client->selectCodeList([...]);
+```
+
+---
 
 ## Features
 
-- Complete implementation of KRA eTims API endpoints
-- Comprehensive validation of requests
-- Error handling and logging
-- Authentication management
-- Modular architecture
+✅ **Postman Collection Compliance**  
+- 100% header, path, and payload alignment with official KRA Postman collection  
+- Correct nested paths (`/insert/stockIO`, `/save/stockMaster`)  
+
+✅ **Strict Header Management**  
+- Automatic `apigee_app_id` injection in all requests  
+- Initialization uses **ONLY** `apigee_app_id` header (no `tin`/`bhfId`/`cmcKey`)  
+- Business endpoints use full 6-header set  
+
+✅ **Token Lifecycle Management**  
+- Automatic token caching with 60-second buffer  
+- Transparent token refresh on 401 errors  
+- File-based cache with configurable location  
+
+✅ **Comprehensive Validation**  
+- Respect\Validation schemas matching KRA specifications  
+- Field-level validation with human-readable errors  
+- Date format enforcement (`YYYYMMDDHHmmss`)  
+
+✅ **Error Handling**  
+- Typed exceptions (`ApiException`, `AuthenticationException`, `ValidationException`)  
+- `resultCd` parsing with business error messages  
+- Detailed debug output for KRA fault strings  
+
+✅ **Production Ready**  
+- SSL verification enabled by default  
+- Timeout configuration  
+- Environment-aware (sandbox/production)  
+
+---
 
 ## Installation
 
@@ -61,246 +150,490 @@ Each receipt issued by Trader Invoicing System is formed from a combination of r
 composer require paybilldev/kra-etims-sdk
 ```
 
-## Project Structure
+### Requirements
+- PHP 8.1+
+- cURL extension
+- JSON extension
+- Respect\Validation (`composer require respect/validation`)
 
-```
-kra-etims-sdk/
-├── examples/                           # Example usage scripts
-│   ├── basic.php                       # SDK usage as a library
-│   └── composer.json                   # Composer File
-├── src/                                # Source code
-│   ├── services/                       # Business logic services
-│   │   ├── ApiService.php              # Core API service
-│   │   ├── AuthService.php             # Authentication service
-│   │   ├── BasicDataService.php        # Basic data service
-│   │   ├── InitializationService.php   # Initialization service
-│   │   ├── PurchaseService.php         # Purchase service
-│   │   ├── SalesService.php            # Sales service
-│   │   └── StockService.php            # Stock service
-│   ├── Exceptions/                     # Utility functions
-│   │   ├── ApiException.php            # Error handling
-│   │   ├── AuthenticationException.php # Error handling
-│   │   └── ValidationException.php      # Request validation
-│   └── helper.php                      # Helper Functions
-├── tests/                              # Test files
-│   └── ApiTest.php                      # API service tests
-├── composer.json                       # Project metadata and dependencies
-└── README.md                           # SDK docs
-```
+---
 
-## Usage
+## Configuration
 
-### As a PHP SDK
+### Option 1: PHP Config Array
 
 ```php
+<?php
+$config = [
+    'env' => 'sbx', // 'sbx' for sandbox, 'prod' for production
+
+    'cache_file' => sys_get_temp_dir() . '/kra_etims_token.json',
+
+    'auth' => [
+        'sbx' => [
+            'token_url'      => 'https://sbx.kra.go.ke/v1/token/generate',
+            'consumer_key'   => getenv('KRA_CONSUMER_KEY'),
+            'consumer_secret'=> getenv('KRA_CONSUMER_SECRET'),
+        ],
+        'prod' => [
+            'token_url'      => 'https://kra.go.ke/v1/token/generate',
+            'consumer_key'   => getenv('KRA_PROD_CONSUMER_KEY'),
+            'consumer_secret'=> getenv('KRA_PROD_CONSUMER_SECRET'),
+        ],
+    ],
+
+    'api' => [
+        'sbx' => [
+            'base_url'      => 'https://sbx.kra.go.ke/etims-oscu/api/v1',
+            'apigee_app_id' => getenv('KRA_APIGEE_APP_ID'), // 🔑 CRITICAL
+        ],
+        'prod' => [
+            'base_url'      => 'https://kra.go.ke/etims-oscu/api/v1',
+            'apigee_app_id' => getenv('KRA_PROD_APIGEE_APP_ID'),
+        ],
+    ],
+
+    'http' => [
+        'timeout' => 30,
+    ],
+
+    'oscu' => [
+        'tin'     => getenv('KRA_TIN'),
+        'bhf_id'  => getenv('KRA_BHF_ID'),
+        'cmc_key' => '', // Set AFTER initialization
+    ],
+
+    'endpoints' => [
+        // INITIALIZATION
+        'initialize' => '/initialize',
+
+        // DATA MANAGEMENT
+        'selectCodeList'     => '/selectCodeList',
+        'selectItemClass'    => '/selectItemClass',
+        'branchList'         => '/branchList',
+        'selectTaxpayerInfo' => '/selectTaxpayerInfo',
+        'selectCustomerList' => '/selectCustomerList',
+        'selectNoticeList'   => '/selectNoticeList',
+
+        // SALES MANAGEMENT
+        'sendSalesTransaction'   => '/sendSalesTransaction',
+        'selectSalesTransactions'=> '/selectSalesTransactions',
+        'selectInvoiceDetail'    => '/selectInvoiceDetail',
+
+        // STOCK MANAGEMENT
+        'insertStockIO'        => '/insert/stockIO',
+        'saveStockMaster'      => '/save/stockMaster',
+        'selectStockMoveLists' => '/selectStockMoveLists',
+
+        // PURCHASE MANAGEMENT
+        'getPurchaseTransactionInfo'  => '/getPurchaseTransactionInfo',
+        'sendPurchaseTransactionInfo' => '/sendPurchaseTransactionInfo',
+
+        // ITEM MANAGEMENT
+        'saveItem'            => '/saveItem',
+        'itemInfo'            => '/itemInfo',
+        'saveItemComposition' => '/saveItemComposition',
+    ],
+];
+```
+
+---
+
+## Usage Guide
+
+### Step 1: Initialize SDK
+
+```php
+<?php
 require_once __DIR__ . '/vendor/autoload.php';
 
-use KraEtimsSdk\Services\AuthService;
-use KraEtimsSdk\Services\BasicDataService;
-use KraEtimsSdk\Services\InitializationService;
-use KraEtimsSdk\Services\SalesService;
+use KraEtimsSdk\Services\AuthClient;
+use KraEtimsSdk\Services\EtimsClient;
 
-class KRAeTimsExample
-{
-    private $auth;
-    private $initialization;
-    private $basicData;
-    private $sales;
+// Load config (see Configuration section above)
+$config = require __DIR__ . '/config.php';
 
-     public function __construct(public string $baseUrl, public string $username, public string $password) {
-        $this->auth = new AuthService($baseUrl, $username, $password);
-        $this->initialization = new InitializationService($baseUrl, $username, $password);
-        $this->basicData = new BasicDataService($baseUrl, $username, $password);
-        $this->sales = new SalesService($baseUrl, $username, $password);
-    }
+// Bootstrap clients
+$auth = new AuthClient($config);
+$client = new EtimsClient($config, $auth);
+```
 
-    public function authenticate()
-    {
-        echo "Authenticating with KRA eTims API...\n";
-        try {
-            $result = $this->auth->getToken([
-                'username' => $this->username,
-                'password' => $this->password
-            ]);
-            echo "Authentication successful:\n";
-            print_r($result);
-            return $result['data']['access_token'];
-        } catch (Exception $e) {
-            echo "Authentication failed: " . $e->getMessage() . "\n";
-            throw $e;
-        }
-    }
+### Step 2: Authenticate (Get Access Token)
 
-    public function initializeOsdc()
-    {
-        echo "Initializing OSDC Info...\n";
-        try {
-            $result = $this->initialization->selectInitOsdcInfo([
-                'tin' => 'P000000045R',
-                'bhfId' => '00',
-                'dvcSrlNo' => 'MOVA22'
-            ]);
-            echo "Initialization successful:\n";
-            print_r($result);
-            return $result;
-        } catch (Exception $e) {
-            echo "Initialization failed: " . $e->getMessage() . "\n";
-            throw $e;
-        }
-    }
-
-    public function getCodeList()
-    {
-        echo "Getting code list...\n";
-        try {
-            $result = $this->basicData->selectCodeList([
-                'tin' => 'P000000045R',
-                'bhfId' => '00',
-                'lastReqDt' => '20220101010101'
-            ]);
-            echo "Code list retrieved:\n";
-            print_r($result);
-            return $result;
-        } catch (Exception $e) {
-            echo "Failed to retrieve code list: " . $e->getMessage() . "\n";
-            throw $e;
-        }
-    }
-
-    public function sendSalesTrns()
-    {
-        echo "Sending sales transaction...\n";
-        try {
-            $result = $this->sales->sendSalesTrns([
-                'tin' => 'P000000045R',
-                'bhfId' => '00',
-                'invcNo' => 'INV001',
-                'salesTrnsItems' => [
-                    [
-                        'itemCd' => 'ITEM001',
-                        'itemNm' => 'Test Item',
-                        'qty' => 1,
-                        'prc' => 100,
-                        'splyAmt' => 100,
-                        'taxTyCd' => 'V',
-                        'taxAmt' => 16
-                    ]
-                ]
-            ]);
-            echo "Sales transaction sent:\n";
-            print_r($result);
-            return $result;
-        } catch (Exception $e) {
-            echo "Failed to send sales transaction: " . $e->getMessage() . "\n";
-            throw $e;
-        }
-    }
-}
-
-# API Base URLs
-// DEV_API_BASE_URL=https://etims-api-sbx.kra.go.ke
-// PROD_API_BASE_URL=https://etims-api.kra.go.ke/etims-api
-
-// # Authentication
-// API_USERNAME=your_username
-// API_PASSWORD=your_password
-
-// If script is run directly
-if (php_sapi_name() === 'cli' && basename(__FILE__) === basename($_SERVER['PHP_SELF'])) {
-    $baseUrl = 'https://etims-api-sbx.kra.go.ke'; 
-    $username = 'test';
-    $password = 'test';
-    $example = new KRAeTimsExample($baseUrl, $username, $password);
-    try {
-        $example->authenticate();
-        $example->initializeOsdc();
-        $example->getCodeList();
-        $example->sendSalesTrns();
-        echo "All examples completed successfully.\n";
-    } catch (Exception $e) {
-        echo "Example execution failed: " . $e->getMessage() . "\n";
-    }
+```php
+try {
+    // Force fresh token (optional - cache used by default)
+    $token = $auth->token(true);
+    echo "✅ Token acquired: " . substr($token, 0, 20) . "...\n";
+} catch (\Throwable $e) {
+    echo "❌ Authentication failed: " . $e->getMessage() . "\n";
+    exit(1);
 }
 ```
 
-## TIS Specifications and Requirements
+### Step 3: OSCU Initialization (Critical Step)
 
-### Data Flow Between TIS and OSCU/VSCU
+```php
+try {
+    // ⚠️ MUST use KRA-approved device serial (NOT dynamic!)
+    $response = $client->initialize([
+        'tin'      => $config['oscu']['tin'],
+        'bhfId'    => $config['oscu']['bhf_id'],
+        'dvcSrlNo' => 'dvcv1130', // REPLACE with your approved serial
+    ]);
 
-For the purpose of signing an invoice, the data flow between the Trader Invoicing System and the Virtual Sales Control Unit will be as follows for each receipt type:
+    // Extract cmcKey (returned at root level in sandbox)
+    $cmcKey = $response['cmcKey'] ?? null;
+    
+    if (!$cmcKey) {
+        throw new \RuntimeException('cmcKey not found in response');
+    }
 
-1. **TIS sends receipt data to OSCU/VSCU**:
-   - Date and time
-   - Personal Identification Number
-   - Buyer's PIN (Optional)
-   - Receipt number
-   - Receipt type and transaction type
-   - Tax rates
-   - Total amounts with tax
-   - Tax amounts
+    // Update config with cmcKey
+    $config['oscu']['cmc_key'] = $cmcKey;
+    
+    // Recreate client with updated config
+    $client = new EtimsClient($config, $auth);
+    
+    echo "✅ OSCU initialized. cmcKey: " . substr($cmcKey, 0, 15) . "...\n";
+} catch (\KraEtimsSdk\Exceptions\ApiException $e) {
+    if ($e->getErrorCode() === '901') {
+        echo "❌ DEVICE NOT VALID (resultCd 901)\n";
+        echo "   → Device serial not registered with KRA\n";
+        echo "   → Contact timsupport@kra.go.ke for approved serial\n";
+    }
+    exit(1);
+}
+```
 
-2. **OSCU/VSCU receives receipt data from TIS**
+### Step 4: Business Operations
 
-3. **OSCU/VSCU generates response data and sends it back to TIS**:
-   - SCU ID
-   - Date and time
-   - Receipt label
-   - Receipt counter per receipt type
-   - Receipt counter of all receipts
-   - Digital signatures (except for TRAINING and PROFORMA receipts)
+```php
+// Fetch code list
+try {
+    $codes = $client->selectCodeList([
+        'tin'       => $config['oscu']['tin'],
+        'bhfId'     => $config['oscu']['bhf_id'],
+        'lastReqDt' => date('YmdHis', strtotime('-7 days')),
+    ]);
+    echo "✅ Retrieved " . count($codes['itemList'] ?? []) . " codes\n";
+} catch (\Throwable $e) {
+    echo "❌ Code list fetch failed: " . $e->getMessage() . "\n";
+}
 
-4. **TIS finalizes receipt** by printing OSCU/VSCU information on the receipt
+// Send sales transaction (Postman-compliant payload)
+try {
+    $response = $client->sendSalesTransaction([
+        'invcNo'        => 1, // INTEGER (sequential)
+        'custTin'       => 'A123456789Z',
+        'custNm'        => 'Test Customer',
+        'salesTyCd'     => 'N', // N=Normal, R=Return
+        'rcptTyCd'      => 'R', // R=Receipt
+        'pmtTyCd'       => '01', // 01=Cash
+        'salesSttsCd'   => '01', // 01=Completed
+        'cfmDt'         => date('YmdHis'),
+        'salesDt'       => date('Ymd'),
+        'stockRlsDt'    => date('YmdHis'),
+        'totItemCnt'    => 1,
+        'taxblAmtA'     => 0.00,
+        'taxblAmtB'     => 0.00,
+        'taxblAmtC'     => 81000.00,
+        'taxblAmtD'     => 0.00,
+        'taxblAmtE'     => 0.00,
+        'taxRtA'        => 0.00,
+        'taxRtB'        => 0.00,
+        'taxRtC'        => 0.00,
+        'taxRtD'        => 0.00,
+        'taxRtE'        => 0.00,
+        'taxAmtA'       => 0.00,
+        'taxAmtB'       => 0.00,
+        'taxAmtC'       => 0.00,
+        'taxAmtD'       => 0.00,
+        'taxAmtE'       => 0.00,
+        'totTaxblAmt'   => 81000.00,
+        'totTaxAmt'     => 0.00,
+        'totAmt'        => 81000.00,
+        'prchrAcptcYn'  => 'N',
+        'regrId'        => 'Admin',
+        'regrNm'        => 'Admin',
+        'modrId'        => 'Admin',
+        'modrNm'        => 'Admin',
+        'receipt' => [
+            'custTin'    => 'A123456789Z',
+            'custMblNo'  => null,
+            'rptNo'      => 1,
+            'rcptPbctDt' => date('YmdHis'),
+            'trdeNm'     => '',
+            'adrs'       => '',
+            'topMsg'     => 'Shopwithus',
+            'btmMsg'     => 'Welcome',
+            'prchrAcptcYn' => 'N',
+        ],
+        'itemList' => [
+            [
+                'itemSeq'   => 1,
+                'itemCd'    => 'KE2NTBA00000001',
+                'itemClsCd' => '1000000000',
+                'itemNm'    => 'Brand A',
+                'barCd'     => '',
+                'pkgUnitCd' => 'NT',
+                'pkg'       => 1,
+                'qtyUnitCd' => 'BA',
+                'qty'       => 90.0,
+                'prc'       => 1000.00,
+                'splyAmt'   => 81000.00,
+                'dcRt'      => 10.0,
+                'dcAmt'     => 9000.00,
+                'taxTyCd'   => 'C',
+                'taxblAmt'  => 81000.00,
+                'taxAmt'    => 0.00,
+                'totAmt'    => 81000.00,
+            ],
+        ],
+    ]);
+    
+    echo "✅ Sales transaction sent (resultCd: {$response['resultCd']})\n";
+} catch (\Throwable $e) {
+    echo "❌ Sales transaction failed: " . $e->getMessage() . "\n";
+}
+```
 
-5. **TIS sends complete journal data** of NS and NC receipt labels in text form to OSCU/VSCU
+---
 
-### Receipt Requirements
+## API Reference
 
-A receipt must show the following minimum required information:
+### Core Classes
 
-1. Taxpayer's name
-2. Personal Identification Number
-3. The address at which the sale takes place
-4. Personal Identification number of the buyer
-5. Receipt type and transaction type
-6. Serial number of the receipt from an uninterrupted ascending number series per receipt type
-7. Registered items and/or services with description, quantity, price, with any other action that may be done such as cancellations, corrections
-8. Total sales amount
-9. Tax rates applied
-10. The value added tax added to the sale amount
-11. Means of payment
-12. SCU information:
-    - Date and time stamped by OSCU/VSCU
-    - Sequential receipt type number
-    - Receipt signatures
-    - OSCU/VSCU identification number
-13. Date and time stamped by TIS
+| Class | Purpose |
+|-------|---------|
+| `AuthClient` | Token generation, caching, and refresh management |
+| `BaseClient` | HTTP request handling, header management, error unwrapping |
+| `EtimsClient` | Business endpoint methods (sales, stock, purchases) |
+| `Validator` | Payload validation against KRA schemas |
 
-### TIS Functional Requirements
+### Endpoint Methods
 
-1. TIS shall not issue a receipt of any type before the data flow with OSCU/VSCU has been finalized
-2. Copies, training, or proforma receipts must be clearly distinguishable from normal receipts
-3. All corrections on the receipt should be performed before approving it
-4. Normal Sale (NS) refers to a receipt that shall be produced and offered to the client
-5. TIS shall not be able to register a sales amount without simultaneously printing a receipt
-6. TIS shall not be able to register the amount of a transaction without identifying the good and/or service
-7. TIS shall not be able to correct a transaction without prior cancelation of the original transaction
-8. TIS shall print only one original receipt. Reprints shall have a watermark with mention "Copy"
-9. TIS shall not issue a receipt of goods when the corresponding stock is less than the requested quantity
+#### Initialization
+```php
+initialize(array $data): array
+// Required fields: tin, bhfId, dvcSrlNo
+// Returns: cmcKey + device info
+```
 
-## Development
+#### Data Management
+```php
+selectCodeList(array $data): array
+selectItemClass(array $data): array
+branchList(array $data): array
+selectTaxpayerInfo(array $data): array
+selectCustomerList(array $data): array
+selectNoticeList(array $data): array
+```
+
+#### Sales Management
+```php
+sendSalesTransaction(array $data): array
+selectSalesTransactions(array $data): array
+selectInvoiceDetail(array $data): array
+```
+
+#### Stock Management
+```php
+insertStockIO(array $data): array      // Note: nested path /insert/stockIO
+saveStockMaster(array $data): array    // Note: nested path /save/stockMaster
+selectStockMoveLists(array $data): array
+```
+
+#### Purchase Management
+```php
+getPurchaseTransactionInfo(array $data): array
+sendPurchaseTransactionInfo(array $data): array
+```
+
+#### Item Management
+```php
+saveItem(array $data): array
+itemInfo(array $data): array
+saveItemComposition(array $data): array
+```
+
+---
+
+## Error Handling
+
+### Exception Types
+
+| Exception | When Thrown | Example |
+|-----------|-------------|---------|
+| `AuthenticationException` | Token generation fails | Invalid consumer key/secret |
+| `ApiException` | KRA business error (`resultCd !== '0000'`) | `resultCd: 500` (invalid payload) |
+| `ValidationException` | Payload fails schema validation | Missing required field |
+
+### Handling Pattern
+
+```php
+try {
+    $response = $client->sendSalesTransaction($payload);
+} catch (\KraEtimsSdk\Exceptions\ValidationException $e) {
+    foreach ($e->getErrors() as $error) {
+        echo "Validation error: $error\n";
+    }
+} catch (\KraEtimsSdk\Exceptions\ApiException $e) {
+    echo "KRA API Error ({$e->getErrorCode()}): {$e->getMessage()}\n";
+    print_r($e->getDetails()); // Full KRA response
+} catch (\KraEtimsSdk\Exceptions\AuthenticationException $e) {
+    echo "Authentication failed: {$e->getMessage()}\n";
+} catch (\Throwable $e) {
+    echo "Unexpected error: {$e->getMessage()}\n";
+}
+```
+
+### Common KRA Error Codes
+
+| Code | Meaning | Solution |
+|------|---------|----------|
+| `901` | "It is not valid device" | Use KRA-approved device serial |
+| `902` | "Invalid cmcKey" | Re-initialize OSCU to get fresh cmcKey |
+| `500` | "Check request body" | Validate payload against Postman schema |
+| `401` | "Unauthorized" | Check token validity + apigee_app_id header |
+
+---
+
+## Troubleshooting
+
+### ❌ "It is not valid device" (resultCd: 901)
+
+**Cause**: Device serial not registered with KRA sandbox  
+**Solution**:
+1. Email `timsupport@kra.go.ke` requesting approved sandbox credentials
+2. Use **static** approved serial (e.g., `dvcv1130`) – never generate dynamically
+3. Verify TIN/branch ID match registered device
+
+### ❌ "Invalid cmcKey" (resultCd: 902)
+
+**Cause**: cmcKey expired or not set in config  
+**Solution**:
+```php
+// After initialization:
+$config['oscu']['cmc_key'] = $response['cmcKey'];
+$client = new EtimsClient($config, $auth); // MUST recreate client
+```
+
+### ❌ Missing apigee_app_id header
+
+**Cause**: `apigee_app_id` not set in config  
+**Solution**:
+```php
+'api' => [
+    'sbx' => [
+        'apigee_app_id' => 'YOUR_APIGEE_APP_ID', // 🔑 REQUIRED
+    ],
+],
+```
+
+### ❌ Trailing spaces in URLs
+
+**Cause**: Copy-paste errors from documentation  
+**Solution**: Use `trim()` on all URLs in config:
+```php
+'token_url' => trim('https://sbx.kra.go.ke/v1/token/generate'),
+```
+
+---
+
+## Testing
+
+### Run Integration Tests
 
 ```bash
-# Run in development mode with auto-reload
-composer install
+# Set environment variables first
+export KRA_CONSUMER_KEY="your_key"
+export KRA_CONSUMER_SECRET="your_secret"
+export KRA_APIGEE_APP_ID="your_apigee_id"
+export KRA_TIN="P051092286D"
+export KRA_BHF_ID="00"
 
-# Run tests
-vendor/bin/phpunit tests/ApiTest.php 
-
-# I plan to add more tests in the future.
+# Run test suite
+php examples/test_integration.php
 ```
+
+### Test Flow Validation
+
+The test suite validates:
+1. ✅ Token generation with Basic Auth
+2. ✅ OSCU initialization with approved device serial
+3. ✅ cmcKey extraction and header injection
+4. ✅ Code list retrieval
+5. ✅ Sales transaction with full Postman payload
+6. ✅ Token cache reuse
+
+---
+
+## Sandbox Setup Guide
+
+### Step 1: Register on eTIMS Portal
+1. Visit [eTIMS Taxpayer Sandbox Portal](https://sbx.kra.go.ke)
+2. Sign up with your company PIN
+3. Request OSCU device registration via "Service Request" → "eTIMS" → "OSCU"
+
+### Step 2: Obtain Credentials
+After approval, KRA will provide:
+- Approved device serial number (`dvcSrlNo`)
+- Sandbox TIN and branch ID
+- APigee App ID (`apigee_app_id`)
+- Consumer key/secret for token generation
+
+### Step 3: Configure SDK
+```env
+KRA_CONSUMER_KEY="provided_by_kra"
+KRA_CONSUMER_SECRET="provided_by_kra"
+KRA_APIGEE_APP_ID="provided_by_kra"
+KRA_TIN="provided_by_kra"
+KRA_BHF_ID="00"
+KRA_ENV="sbx"
+```
+
+### Step 4: Run Initialization Test
+```bash
+php examples/test_initialization.php
+```
+
+> 💡 **Sandbox Tip**: Use device serial `dvcv1130` for initial testing – KRA has pre-provisioned this in sandbox (may not work in production).
+
+---
+
+## Support
+
+### KRA Official Support
+| Purpose | Contact | Response Time |
+|---------|---------|---------------|
+| Sandbox credentials | `timsupport@kra.go.ke` | 1-3 business days |
+| API technical issues | `apisupport@kra.go.ke` | 24-48 hours |
+| Portal access issues | `timsupport@kra.go.ke` | 1 business day |
+
+### SDK Support
+For SDK-specific issues:
+- GitHub Issues: [github.com/paybilldev/kra-etims-sdk/issues](https://github.com/paybilldev/kra-etims-sdk/issues)
+- Email: ebartile@gmail.com
+
+---
 
 ## License
 
-MIT
+MIT License
 
+Copyright © 2026 Bartile Emmanuel / Paybill Kenya
 
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+---
+
+## Attribution
+
+This SDK was developed by **Bartile Emmanuel** for Paybill Kenya to simplify KRA eTIMS OSCU integration for Kenyan businesses. Special thanks to KRA for providing comprehensive API documentation and Postman collections.
+
+> ℹ️ **Disclaimer**: This SDK is not officially endorsed by Kenya Revenue Authority. Always verify integration requirements with KRA before production deployment.

@@ -8,492 +8,808 @@ use KraEtimsSdk\Services\AuthClient;
 use KraEtimsSdk\Services\EtimsClient;
 use KraEtimsSdk\Exceptions\ApiException;
 use KraEtimsSdk\Exceptions\AuthenticationException;
-use KraEtimsSdk\Exceptions\ValidationException;
 
-// -------------------------------------------------
-// 🔑 CRITICAL SETUP INSTRUCTIONS
-// -------------------------------------------------
-// BEFORE RUNNING THIS SCRIPT:
-// 1. Obtain SANDBOX credentials from KRA:
-//    • Email: timsupport@kra.go.ke
-//    • Subject: "Request for OSCU Sandbox Test Credentials"
-//    • Required: Approved device serial (dvcSrlNo), TIN, branch ID
-//
-// 2. SET CREDENTIALS VIA ENVIRONMENT VARIABLES (SECURE):
-//    export KRA_CONSUMER_KEY="your_key"
-//    export KRA_CONSUMER_SECRET="your_secret"
-//
-// 3. ⚠️ DEVICE SERIAL MUST BE PRE-REGISTERED WITH KRA
-//    • Sandbox test value (MAY work): dvcv1130
-//    • NEVER use dynamic values like 'DEV2026...' → causes resultCd 901
-// -------------------------------------------------
+/* ---------------------------- Helpers ---------------------------- */
+function abort(string $msg): void {
+    echo "\n❌ $msg\n";
+    exit(1);
+}
 
-// -------------------------------------------------
-// Configuration (EXACTLY MATCHES POSTMAN COLLECTION)
-// -------------------------------------------------
+function headerLine(string $title): void {
+    echo "\n" . str_repeat('=', 70) . "\n$title\n" . str_repeat('=', 70) . "\n";
+}
+
+function lastReqDt(string $modifier = '-7 days'): string {
+    return (new DateTime($modifier))->format('YmdHis');
+}
+
+/* ---------------------------- Validate Env ---------------------------- */
+foreach (['KRA_CONSUMER_KEY','KRA_CONSUMER_SECRET','KRA_TIN','DEVICE_SERIAL'] as $env) {
+    if (!getenv($env)) abort("Missing environment variable: $env");
+}
+
+/* ---------------------------- Config ---------------------------- */
 $config = [
-    // Environment MUST be 'sbx' (Postman uses {{url}} variable mapped to sbx/prod)
-    'env' => 'sbx',
-
+    'env' => 'sbx', // 'prod' for production
     'cache_file' => sys_get_temp_dir() . '/kra_etims_token.json',
-
     'auth' => [
         'sbx' => [
-            // 🔑 TRIMMED URL (NO trailing spaces - critical fix!)
-            'token_url'      => trim('https://sbx.kra.go.ke/v1/token/generate'),
-            'consumer_key'   => 'YOUR_SANDBOX_CONSUMER_KEY',      // 🔑 REPLACE
-            'consumer_secret'=> 'YOUR_SANDBOX_CONSUMER_SECRET',   // 🔑 REPLACE
-        ],
-        'prod' => [
-            'token_url'      => trim('https://kra.go.ke/v1/token/generate'),
-            'consumer_key'   => trim(getenv('KRA_PROD_CONSUMER_KEY') ?: 'YOUR_PROD_CONSUMER_KEY'),
-            'consumer_secrzet'=> trim(getenv('KRA_PROD_CONSUMER_SECRET') ?: 'YOUR_PROD_CONSUMER_SECRET'),
+            'token_url'       => 'https://sbx.kra.go.ke/v1/token/generate',
+            'consumer_key'    => getenv('KRA_CONSUMER_KEY'),
+            'consumer_secret' => getenv('KRA_CONSUMER_SECRET'),
         ],
     ],
-
     'api' => [
-        'sbx' => [
-            'base_url'      => trim('https://sbx.kra.go.ke/etims-oscu/api/v1'),
-        ],
-        'prod' => [
-            'base_url'      => trim('https://kra.go.ke/etims-oscu/api/v1'),
-        ],
+        'sbx' => ['base_url' => 'https://etims-api-sbx.kra.go.ke/etims-api']
     ],
-
-    'http' => [
-        'timeout' => 30, // Increased for reliability
-    ],
-
+    'http' => ['timeout' => 30],
     'oscu' => [
-        'tin'     => trim(getenv('KRA_TIN') ?: 'P000000002'),    // Sandbox test TIN
-        'bhf_id'  => trim(getenv('KRA_BHF_ID') ?: '00'),          // Sandbox test branch
-        'cmc_key' => '',                                           // Set AFTER initialization
-    ],
-
-    // 🔑 ENDPOINT MAPPINGS EXACTLY AS IN POSTMAN COLLECTION
-    'endpoints' => [
-        // INITIALIZATION
-        'initialize' => '/initialize',
-
-        // BRANCH MANAGEMENT
-        'branchInsuranceInfo'    => '/branchInsuranceInfo',
-        'branchUserAccount'      => '/branchUserAccount',
-        'branchSendCustomerInfo' => '/branchSendCustomerInfo',
-
-        // DATA MANAGEMENT (EXACT Postman paths)
-        'selectCodeList'     => '/selectCodeList',
-        'selectItemClass'    => '/selectItemClass',
-        'branchList'         => '/branchList',                    // ✅ NOT selectBhfList
-        'customerPinInfo'    => '/customerPinInfo',
-        'selectTaxpayerInfo' => '/selectTaxpayerInfo',
-        'selectNoticeList'   => '/selectNoticeList',
-        'selectCustomerList' => '/selectCustomerList',
-
-        // IMPORTS
-        'importedItemInfo'          => '/importedItemInfo',
-        'importedItemConvertedInfo' => '/importedItemConvertedInfo',
-
-        // ITEM MANAGEMENT
-        'itemInfo'            => '/itemInfo',
-        'saveItem'            => '/saveItem',
-        'saveItemComposition' => '/saveItemComposition',
-
-        // PURCHASE
-        'getPurchaseTransactionInfo'  => '/getPurchaseTransactionInfo',
-        'sendPurchaseTransactionInfo' => '/sendPurchaseTransactionInfo',
-
-        // SALES (EXACT Postman paths)
-        'sendSalesTransaction'   => '/sendSalesTransaction',
-        'selectSalesTransactions'=> '/selectSalesTransactions',
-        'selectInvoiceDetail'    => '/selectInvoiceDetail',
-
-        // STOCK (NESTED PATHS - critical!)
-        'insertStockIO'        => '/insert/stockIO',    // ✅ WITH SLASH
-        'saveStockMaster'      => '/save/stockMaster',  // ✅ WITH SLASH
-        'selectStockMoveLists' => '/selectStockMoveLists',
+        'tin'           => getenv('KRA_TIN'),
+        'bhf_id'        => getenv('KRA_BHF_ID') ?: '01',
+        'device_serial' => getenv('DEVICE_SERIAL'),
+        'cmc_key'       => getenv('CMC_KEY') ?: '',
     ],
 ];
 
-// -------------------------------------------------
-// 🔒 VALIDATE CRITICAL CREDENTIALS BEFORE EXECUTION
-// -------------------------------------------------
-function validateConfig(array $config): void
-{
-    $missing = [];
-    $sbx = $config['auth']['sbx'];
-    
-    if (strpos($sbx['consumer_key'], 'YOUR_') !== false) {
-        $missing[] = 'KRA_CONSUMER_KEY (set via env var or config)';
-    }
-    if (strpos($sbx['consumer_secret'], 'YOUR_') !== false) {
-        $missing[] = 'KRA_CONSUMER_SECRET (set via env var or config)';
-    }
-    
-    if ($missing) {
-        echo "\n❌ MISSING CREDENTIALS:\n";
-        foreach ($missing as $item) {
-            echo "   • $item\n";
-        }
-        echo "\n💡 SET VIA ENVIRONMENT VARIABLES:\n";
-        echo "   export KRA_CONSUMER_KEY='your_key'\n";
-        echo "   export KRA_CONSUMER_SECRET='your_secret'\n";
-        echo "\n⚠️  DEVICE SERIAL WARNING:\n";
-        echo "   You MUST use a KRA-approved device serial number.\n";
-        echo "   Common sandbox test value: 'dvcv1130' (may work if pre-provisioned)\n";
-        echo "   Contact timsupport@kra.go.ke to get approved credentials.\n";
-        exit(1);
-    }
-}
-
-// -------------------------------------------------
-// Helper functions
-// -------------------------------------------------
-function printHeader(string $title): void
-{
-    echo "\n" . str_repeat('=', 70) . "\n";
-    echo "  $title\n";
-    echo str_repeat('=', 70) . "\n\n";
-}
-
-function printError(string $message): void
-{
-    echo "❌ $message\n";
-}
-
-function printSuccess(string $message): void
-{
-    echo "✅ $message\n";
-}
-
-function printWarning(string $message): void
-{
-    echo "⚠️  $message\n";
-}
-
-function formatDate(string $modifier = '-7 days'): string
-{
-    // KRA rejects future dates for lastReqDt
-    $dt = new DateTime($modifier);
-    return $dt->format('YmdHis');
-}
-
-// -------------------------------------------------
-// MAIN TEST FLOW
-// -------------------------------------------------
-printHeader('🚀 KRA eTIMS OSCU SDK TEST (Postman-Aligned)');
-validateConfig($config);
-
-// Bootstrap clients
+/* ---------------------------- Bootstrap SDK ---------------------------- */
 $auth  = new AuthClient($config);
 $etims = new EtimsClient($config, $auth);
 
-// -------------------------------------------------
-// STEP 1: AUTHENTICATION
-// -------------------------------------------------
-printHeader('STEP 1: GET ACCESS TOKEN');
+/* ---------------------------- STEP 1: AUTH ---------------------------- */
+headerLine('STEP 1: AUTHENTICATION');
 try {
-    // Clear cache first to ensure fresh token
-    $auth->forgetToken();
-    
-    echo "Requesting token from: {$config['auth']['sbx']['token_url']}\n";
-    $token = $auth->token(true); // Force fresh token
-    
-    echo "✓ Token received (first 30 chars): " . substr($token, 0, 30) . "...\n";
-    printSuccess('Authentication successful');
+    $auth->forgetToken();  // Clear cached token
+    $token = $auth->token(true); // Force refresh
+    echo "✅ Token OK: " . substr($token,0,25) . "...\n";
 } catch (AuthenticationException $e) {
-    printError("Authentication failed: " . $e->getMessage());
-    echo "\n💡 CHECK:\n";
-    echo "   • Consumer key/secret correct?\n";
-    echo "   • Token URL has NO trailing spaces?\n";
-    exit(1);
-} catch (Throwable $e) {
-    printError("Authentication failed: " . $e->getMessage());
-    exit(1);
+    abort("Auth failed: {$e->getMessage()}");
 }
 
-// -------------------------------------------------
-// STEP 2: OSCU INITIALIZATION (CRITICAL - HEADER RESTRICTIONS)
-// -------------------------------------------------
-printHeader('STEP 2: OSCU INITIALIZATION');
-printWarning('⚠️  DEVICE SERIAL MUST BE PRE-REGISTERED WITH KRA SANDBOX');
-printWarning('⚠️  Using unregistered device = resultCd 901 "not valid device"');
+/* ---------------------------- STEP 2: OSCU INITIALIZATION ---------------------------- */
+// $init = $etims->selectInitOsdcInfo([
+//     'tin' => $config['oscu']['tin'],
+//     'bhfId' => $config['oscu']['bhf_id'],
+//     'dvcSrlNo' => $config['oscu']['device_serial'],
+// ]);
+// $config['oscu']['cmc_key'] = $init['cmcKey'] ?? abort($init['resultMsg']);
 
-// 🔑 USE STATIC, PRE-APPROVED DEVICE SERIAL (NOT DYNAMIC!)
-// Common sandbox test value (MAY work if KRA pre-provisioned it):
-$approvedDeviceSerial = '3i7oBokRdPHqbHfzqYBm2Gg65g"'; // ⚠️ REPLACE WITH YOUR KRA-APPROVED SERIAL
+/* ---------------------------- STEP 3: CODE LIST SEARCH ---------------------------- */
+headerLine('STEP 3: CODE LIST SEARCH');
 
 try {
-    echo "Initializing with:\n";
-    echo "  TIN: {$config['oscu']['tin']}\n";
-    echo "  Branch ID: {$config['oscu']['bhf_id']}\n";
-    echo "  Device Serial: $approvedDeviceSerial\n";
+    $codes = $etims->selectCodeList(['lastReqDt' => lastReqDt()]);
+    $clsList = $codes['clsList'] ?? [];
 
-    $response = $etims->initialize([
-        'tin'      => $config['oscu']['tin'],
-        'bhfId'    => $config['oscu']['bhf_id'],
-        'dvcSrlNo' => $approvedDeviceSerial, // MUST BE PRE-REGISTERED
-    ]);
+    echo "Code Classes found: " . count($clsList) . "\n";
 
-    echo "✓ Initialization response:\n";
-    print_r($response);
+    foreach ($clsList as $code) {
+        echo "- Class: {$code['cdCls']} ({$code['cdClsNm']})\n";
 
-    // 🔑 EXTRACT cmcKey (KRA sandbox returns at ROOT level)
-    $cmcKey = $response['cmcKey'] ?? ($response['data']['cmcKey'] ?? null);
-    
-    if (!$cmcKey) {
-        throw new RuntimeException(
-            "cmcKey not found in response. Check:\n" .
-            "  • Device serial is APPROVED by KRA\n" .
-            "  • TIN/branch ID match registered device\n" .
-            "  • Response structure: " . json_encode($response)
-        );
-    }
-
-    // Update config with cmcKey for subsequent requests
-    $config['oscu']['cmc_key'] = $cmcKey;
-    $etims = new EtimsClient($config, $auth); // Recreate with updated config
-
-    printSuccess("OSCU initialized successfully");
-    printSuccess("cmcKey: " . substr($cmcKey, 0, 15) . '...');
-} catch (ApiException $e) {
-    $details = $e->getDetails() ?? [];
-    $resultCd = $details['resultCd'] ?? 'UNKNOWN';
-    $resultMsg = $details['resultMsg'] ?? $e->getMessage();
-    
-    if ($resultCd === '901') {
-        printError('DEVICE NOT VALID (resultCd 901)');
-        echo "\n💡 SOLUTION:\n";
-        echo "   1. Device serial '$approvedDeviceSerial' is NOT registered with KRA sandbox\n";
-        echo "   2. Contact KRA support: timsupport@kra.go.ke\n";
-        echo "   3. Request APPROVED sandbox device serial number\n";
-        echo "   4. Use ONLY pre-approved serial in initialization\n";
-        echo "\n✅ Known sandbox test values (MAY work):\n";
-        echo "   • dvcv1130\n";
-        echo "   • KRACU013000001\n";
-        echo "\n❗ NEVER generate dynamic device serials – KRA rejects all unregistered values\n";
-    } else {
-        printError("Initialization failed: $resultMsg (Code: $resultCd)");
-        if ($details) {
-            echo "Response details:\n";
-            print_r($details);
+        // Optional: loop over detail codes
+        foreach ($code['dtlList'] ?? [] as $detail) {
+            echo "    - Detail Code: {$detail['cd']} ({$detail['cdNm']})\n";
         }
     }
-    exit(1);
-} catch (Throwable $e) {
-    printError("Initialization failed: " . $e->getMessage());
-    exit(1);
-}
 
-// -------------------------------------------------
-// STEP 3: FETCH CODE LIST (POST-INITIALIZATION)
-// -------------------------------------------------
-printHeader('STEP 3: FETCH CODE LIST (Requires cmcKey)');
-try {
-    $response = $etims->selectCodeList([
-        'tin'       => $config['oscu']['tin'],
-        'bhfId'     => $config['oscu']['bhf_id'],
-        'lastReqDt' => formatDate('-7 days'), // NOT future date
-    ]);
-
-    $itemCount = count($response['itemList'] ?? []);
-    echo "✓ Retrieved $itemCount code list items\n";
-    
-    if ($itemCount > 0) {
-        echo "Sample items:\n";
-        print_r(array_slice($response['itemList'], 0, 2));
-    }
-    
-    printSuccess('Code list fetched successfully');
 } catch (ApiException $e) {
-    $details = $e->getDetails() ?? [];
-    $resultCd = $details['resultCd'] ?? 'UNKNOWN';
-    
-    if ($resultCd === '902') {
-        printError('INVALID cmcKey (resultCd 902)');
-        echo "💡 Did you update config['oscu']['cmc_key'] after initialization?\n";
-    } else {
-        printError("Code list fetch failed: " . ($details['resultMsg'] ?? $e->getMessage()));
+    abort("Code List search failed: " . $e->getMessage());
+}
+
+/* ---------------------------- STEP 4: Customer SEARCH ---------------------------- */
+headerLine('STEP 4: Customer SEARCH');
+
+try {
+    $requestData = [
+        'custmTin' => 'A123456789Z'
+    ];
+
+    $customers = $etims->selectCustomer($requestData);
+
+    $custList = $customers['data']['custList'] ?? [];
+
+    echo "Customers found: " . count($custList) . "\n";
+
+    foreach ($custList as $customer) {
+        echo "- TIN: {$customer['tin']}\n";
+        echo "  Name: {$customer['taxprNm']}\n";
+        echo "  Status: {$customer['taxprSttsCd']}\n";
+        echo "  County: {$customer['prvncNm']}\n";
+        echo "  Sub-County: {$customer['dstrtNm']}\n";
+        echo "  Tax Locality: {$customer['sctrNm']}\n";
+        echo "  Location Desc: {$customer['locDesc']}\n\n";
     }
-    exit(1);
-} catch (Throwable $e) {
-    printError("Code list fetch failed: " . $e->getMessage());
-    exit(1);
+
+} catch (ApiException $e) {
+    abort("Customer search failed: " . $e->getMessage());
 }
 
-// -------------------------------------------------
-// STEP 4: FETCH BRANCH LIST (CORRECT ENDPOINT NAME)
-// -------------------------------------------------
-printHeader('STEP 4: FETCH BRANCH LIST');
-try {
-    // ✅ CORRECT METHOD NAME: branchList() NOT selectBhfList()
-    $response = $etims->branchList([
-        'lastReqDt' => formatDate('-7 days'),
-    ]);
+/* ---------------------------- STEP 5: NOTICE SEARCH ---------------------------- */
+headerLine('STEP 5: NOTICE SEARCH');
 
-    $itemCount = count($response['itemList'] ?? []);
-    echo "✓ Retrieved $itemCount branches\n";
-    printSuccess('Branch list fetched successfully');
-} catch (Throwable $e) {
-    printError("Branch list fetch failed: " . $e->getMessage());
-    // Continue to next step (non-critical)
+try {
+    // Prepare request data
+    $requestData = [
+        'lastReqDt' => lastReqDt('-30 days'),          // Notices updated in last 30 days
+    ];
+
+    // Call the API
+    $notices = $etims->selectNoticeList($requestData);
+
+    // Extract notice list
+    $noticeList = $notices['data']['noticeList'] ?? [];
+
+    echo "Notices found: " . count($noticeList) . "\n";
+
+    // Print notice details
+    foreach ($noticeList as $notice) {
+        echo "- Notice No: {$notice['noticeNo']}\n";
+        echo "  Title: {$notice['title']}\n";
+        echo "  Contents: {$notice['cont']}\n";
+        echo "  Detail URL: {$notice['dtlUrl']}\n";
+        echo "  Registered by: {$notice['regrNm']}\n";
+        echo "  Registration Date: {$notice['regDt']}\n\n";
+    }
+
+} catch (ApiException $e) {
+    abort("Notice search failed: " . $e->getMessage());
 }
 
-// -------------------------------------------------
-// STEP 5: SEND SALES TRANSACTION (FULL POSTMAN PAYLOAD)
-// -------------------------------------------------
-printHeader('STEP 5: SEND SALES TRANSACTION (Postman-Aligned Payload)');
-
-// 🔑 CRITICAL: Invoice numbers MUST be UNIQUE integers (not strings with prefixes)
-// Use sequential integers as shown in Postman examples
-$invoiceNumber = 1; // Start with 1 for sandbox testing
+/* ---------------------------- STEP 6: ITEM CLASS SEARCH ---------------------------- */
+headerLine('STEP 6: ITEM CLASS SEARCH');
 
 try {
-    // ✅ EXACT STRUCTURE FROM POSTMAN COLLECTION (field-by-field match)
-    $salesPayload = [
-        'invcNo'        => $invoiceNumber,          // INTEGER (not string!)
-        'orgInvcNo'     => 0,                       // 0 for new invoices
-        'custTin'       => 'A123456789Z',           // Test customer TIN
-        'custNm'        => 'Test Customer',
-        'salesTyCd'     => 'N',                     // N=Normal, R=Return
-        'rcptTyCd'      => 'R',                     // R=Receipt, P=Proforma, C=Credit Note
-        'pmtTyCd'       => '01',                    // 01=Cash
-        'salesSttsCd'   => '01',                    // 01=Completed
-        'cfmDt'         => date('YmdHis'),          // Confirmation date: YYYYMMDDHHmmss
-        'salesDt'       => date('Ymd'),             // Sales date: YYYYMMDD (NO time)
-        'stockRlsDt'    => date('YmdHis'),          // Stock release: YYYYMMDDHHmmss
-        'cnclReqDt'     => null,                    // Nullable
-        'cnclDt'        => null,                    // Nullable
-        'rfdDt'         => null,                    // Nullable
-        'rfdRsnCd'      => null,                    // Nullable
-        'totItemCnt'    => 1,
-        // TAX BREAKDOWN BY CATEGORY (A/B/C/D/E) - REQUIRED FIELDS
-        'taxblAmtA'     => 0.00,
-        'taxblAmtB'     => 0.00,
-        'taxblAmtC'     => 81000.00,                // Taxable amount for category C
-        'taxblAmtD'     => 0.00,
-        'taxblAmtE'     => 0.00,
-        'taxRtA'        => 0.00,
-        'taxRtB'        => 0.00,
-        'taxRtC'        => 0.00,                    // Rate for category C (0% for exempt)
-        'taxRtD'        => 0.00,
-        'taxRtE'        => 0.00,
-        'taxAmtA'       => 0.00,
-        'taxAmtB'       => 0.00,
-        'taxAmtC'       => 0.00,                    // Tax amount for category C
-        'taxAmtD'       => 0.00,
-        'taxAmtE'       => 0.00,
-        'totTaxblAmt'   => 81000.00,
-        'totTaxAmt'     => 0.00,
-        'totAmt'        => 81000.00,
-        'prchrAcptcYn'  => 'N',                     // Purchaser acceptance: Y/N
-        'remark'        => 'Test transaction from SDK',
-        'regrId'        => 'Admin',
-        'regrNm'        => 'Admin',
-        'modrId'        => 'Admin',
-        'modrNm'        => 'Admin',
-        // RECEIPT OBJECT (REQUIRED)
-        'receipt' => [
-            'custTin'       => 'A123456789Z',
-            'custMblNo'     => null,
-            'rptNo'         => 1,
-            'rcptPbctDt'    => date('YmdHis'),
-            'trdeNm'        => '',
-            'adrs'          => '',
-            'topMsg'        => 'Shopwithus',
-            'btmMsg'        => 'Welcome',
-            'prchrAcptcYn'  => 'N',
-        ],
-        // ITEM LIST (EXACT Postman structure)
+    // Prepare request data
+    $requestData = [
+        'lastReqDt' => lastReqDt('-30 days'),          // Item classes updated in last 30 days
+    ];
+
+    // Call the API
+    $itemClasses = $etims->selectItemClasses($requestData);
+
+    // Extract item class list
+    $itemClsList = $itemClasses['data']['itemClsList'] ?? [];
+
+    echo "Item Classes found: " . count($itemClsList) . "\n";
+
+    // Print item class details
+    foreach ($itemClsList as $item) {
+        echo "- Item Class Code: {$item['itemClsCd']}\n";
+        echo "  Name: {$item['itemClsNm']}\n";
+        echo "  Level: {$item['itemClsLvl']}\n";
+        echo "  Tax Type Code: {$item['taxTyCd']}\n";
+        echo "  Major Target: {$item['mjrTgYn']}\n";
+        echo "  Use Status: {$item['useYn']}\n\n";
+    }
+
+} catch (ApiException $e) {
+    abort("Item Class search failed: " . $e->getMessage());
+}
+
+/* ---------------------------- STEP 7: SAVE ITEM ---------------------------- */
+headerLine('STEP 7: SAVE ITEM');
+
+try {
+    // Prepare request data
+    $requestData = [
+        'itemCd'      => 'KE1NTXU0000006',              // Item Code
+        'itemClsCd'   => '5059690800',                  // Item Classification Code
+        'itemTyCd'    => '1',                           // Item Type Code
+        'itemNm'      => 'test material item3',        // Item Name
+        'itemStdNm'   => null,                           // Optional standard name
+        'orgnNatCd'   => 'KE',                           // Origin country code
+        'pkgUnitCd'   => 'NT',                           // Packaging unit
+        'qtyUnitCd'   => 'U',                            // Quantity unit
+        'taxTyCd'     => 'B',                            // Tax type code
+        'btchNo'      => null,                           // Optional batch number
+        'bcd'         => null,                           // Optional barcode
+        'dftPrc'      => 3500,                           // Default price
+        'grpPrcL1'    => 3500,                           // Optional group prices
+        'grpPrcL2'    => 3500,
+        'grpPrcL3'    => 3500,
+        'grpPrcL4'    => 3500,
+        'grpPrcL5'    => null,
+        'addInfo'     => null,                           // Optional additional info
+        'sftyQty'     => null,                           // Optional safety quantity
+        'isrcAplcbYn' => 'N',                            // Insurance applicable Y/N
+        'useYn'       => 'Y',                             // Item active Y/N
+        'regrId'      => 'Test',                          // Registration ID
+        'regrNm'      => 'Test',                          // Registration Name
+        'modrId'      => 'Test',                          // Modifier ID
+        'modrNm'      => 'Test',                          // Modifier Name
+    ];
+
+    // Call the API
+    $response = $etims->saveItem($requestData);
+
+    // Print response
+    echo "Item Save Response:\n";
+    echo "Result Code: {$response['resultCd']}\n";
+    echo "Result Message: {$response['resultMsg']}\n";
+    echo "Result Date: {$response['resultDt']}\n";
+
+} catch (ApiException $e) {
+    abort("Save Item failed: " . $e->getMessage());
+}
+
+/* ---------------------------- STEP 8: ITEM SEARCH ---------------------------- */
+headerLine('STEP 8: ITEM SEARCH');
+
+try {
+    // Prepare request data
+    $requestData = [
+        'lastReqDt' => lastReqDt('-30 days'),          // Items updated in last 30 days
+    ];
+
+    // Call the API
+    $items = $etims->selectItems($requestData);
+
+    // Extract item list
+    $itemList = $items['data']['itemList'] ?? [];
+
+    echo "Items found: " . count($itemList) . "\n";
+
+    // Print item details
+    foreach ($itemList as $item) {
+        echo "- Item Code: {$item['itemCd']}\n";
+        echo "  Name: {$item['itemNm']}\n";
+        echo "  Classification Code: {$item['itemClsCd']}\n";
+        echo "  Type Code: {$item['itemTyCd']}\n";
+        echo "  Standard Name: {$item['itemStdNm']}\n";
+        echo "  Origin: {$item['orgnNatCd']}\n";
+        echo "  Packaging Unit: {$item['pkgUnitCd']}\n";
+        echo "  Quantity Unit: {$item['qtyUnitCd']}\n";
+        echo "  Tax Type: {$item['taxTyCd']}\n";
+        echo "  Batch No: {$item['btchNo']}\n";
+        echo "  Registered Branch: {$item['regBhfId']}\n";
+        echo "  Barcode: {$item['bcd']}\n";
+        echo "  Default Price: {$item['dftPrc']}\n";
+        echo "  Group Prices: L1={$item['grpPrcL1']}, L2={$item['grpPrcL2']}, L3={$item['grpPrcL3']}, L4={$item['grpPrcL4']}, L5={$item['grpPrcL5']}\n";
+        echo "  Additional Info: {$item['addInfo']}\n";
+        echo "  Safety Quantity: {$item['sftyQty']}\n";
+        echo "  Insurance Applicable: {$item['isrcAplcbYn']}\n";
+        echo "  KRA Modify Flag: {$item['rraModYn']}\n";
+        echo "  Use Status: {$item['useYn']}\n\n";
+    }
+
+} catch (ApiException $e) {
+    abort("Item search failed: " . $e->getMessage());
+}
+
+/* ---------------------------- STEP 9: BRANCH SEARCH ---------------------------- */
+headerLine('STEP 9: BRANCH SEARCH');
+
+try {
+    // Prepare request data
+    $requestData = [
+        'lastReqDt' => lastReqDt('-30 days'),          // Branch info updated in last 30 days
+    ];
+
+    // Call the API
+    $branches = $etims->selectBranches($requestData);
+
+    // Extract branch list
+    $bhfList = $branches['data']['bhfList'] ?? [];
+
+    echo "Branches found: " . count($bhfList) . "\n";
+
+    // Print branch details
+    foreach ($bhfList as $branch) {
+        echo "- Branch ID: {$branch['bhfId']}\n";
+        echo "  Name: {$branch['bhfNm']}\n";
+        echo "  Status Code: {$branch['bhfSttsCd']}\n";
+        echo "  County: {$branch['prvncNm']}\n";
+        echo "  Sub-County: {$branch['dstrtNm']}\n";
+        echo "  Locality: {$branch['sctrNm']}\n";
+        echo "  Location: {$branch['locDesc']}\n";
+        echo "  Manager Name: {$branch['mgrNm']}\n";
+        echo "  Manager Phone: {$branch['mgrTelNo']}\n";
+        echo "  Manager Email: {$branch['mgrEmail']}\n";
+        echo "  Head Office: {$branch['hqYn']}\n\n";
+    }
+
+} catch (ApiException $e) {
+    abort("Branch search failed: " . $e->getMessage());
+}
+
+/* ---------------------------- STEP 10: SAVE BRANCH CUSTOMER ---------------------------- */
+headerLine('STEP 10: SAVE BRANCH CUSTOMER');
+
+try {
+    // Prepare request data
+    $requestData = [
+        'custNo'    => '999991113',                     // Customer Number
+        'custTin'   => 'A123456789Z',                  // Customer PIN
+        'custNm'    => 'Taxpayer1113',                 // Customer Name
+        'adrs'      => null,                            // Optional address
+        'telNo'     => null,                            // Optional contact
+        'email'     => null,                            // Optional email
+        'faxNo'     => null,                            // Optional fax
+        'useYn'     => 'Y',                             // Active Y/N
+        'remark'    => null,                            // Optional remark
+        'regrId'    => 'Test',                          // Registration ID
+        'regrNm'    => 'Test',                          // Registration Name
+        'modrId'    => 'Test',                          // Modifier ID
+        'modrNm'    => 'Test',                          // Modifier Name
+    ];
+
+    // Call the API
+    $response = $etims->saveBranchCustomer($requestData);
+
+    // Check response
+    if (($response['resultCd'] ?? '') === '000') {
+        echo "✅ Branch customer saved successfully\n";
+    } else {
+        abort("Failed to save branch customer: " . ($response['resultMsg'] ?? 'Unknown error'));
+    }
+
+} catch (ApiException $e) {
+    abort("Branch customer save failed: " . $e->getMessage());
+}
+
+/* ---------------------------- STEP 11: SAVE BRANCH USER ---------------------------- */
+headerLine('STEP 11: SAVE BRANCH USER');
+
+try {
+    // Prepare request data
+    $requestData = [
+        'tin'       => $config['oscu']['tin'],           // Taxpayer TIN
+        'bhfId'     => $config['oscu']['bhf_id'],       // Branch ID, '00' for HQ
+        'cmcKey'    => $config['oscu']['cmc_key'] ?? '', // Optional if OSCU used
+        'userId'    => 'userId3',                        // User ID
+        'userNm'    => 'User Name3',                     // User Name
+        'pwd'       => '12341234',                       // Password
+        'adrs'      => null,                             // Optional address
+        'cntc'      => null,                             // Optional contact
+        'authCd'    => null,                             // Optional authority code
+        'remark'    => null,                             // Optional remark
+        'useYn'     => 'Y',                              // Active Y/N
+        'regrId'    => 'Test',                           // Registration ID
+        'regrNm'    => 'Test',                           // Registration Name
+        'modrId'    => 'Test',                           // Modifier ID
+        'modrNm'    => 'Test',                           // Modifier Name
+    ];
+
+    // Call the API
+    $response = $etims->saveBranchUser($requestData);
+
+    // Check response
+    if (($response['resultCd'] ?? '') === '000') {
+        echo "✅ Branch user saved successfully\n";
+    } else {
+        abort("Failed to save branch user: " . ($response['resultMsg'] ?? 'Unknown error'));
+    }
+
+} catch (ApiException $e) {
+    abort("Branch user save failed: " . $e->getMessage());
+}
+
+/* ---------------------------- STEP 12: SAVE BRANCH INSURANCE ---------------------------- */
+headerLine('STEP 12: SAVE BRANCH INSURANCE');
+
+try {
+    // Prepare request data
+    $requestData = [
+        'tin'       => $config['oscu']['tin'],           // Taxpayer TIN
+        'bhfId'     => $config['oscu']['bhf_id'],       // Branch ID, '00' for HQ
+        'cmcKey'    => $config['oscu']['cmc_key'] ?? '', // Optional if OSCU used
+        'isrccCd'   => 'ISRCC01',                        // Insurance Code
+        'isrccNm'   => 'ISRCC NAME',                     // Insurance Name
+        'isrcRt'    => 20,                               // Premium Rate
+        'useYn'     => 'Y',                              // Active Y/N
+        'regrId'    => 'Test',                           // Registration ID
+        'regrNm'    => 'Test',                           // Registration Name
+        'modrId'    => 'Test',                           // Modifier ID
+        'modrNm'    => 'Test',                           // Modifier Name
+    ];
+
+    // Call the API
+    $response = $etims->saveBranchInsurance($requestData);
+
+    // Check response
+    if (($response['resultCd'] ?? '') === '000') {
+        echo "✅ Branch insurance saved successfully\n";
+    } else {
+        abort("Failed to save branch insurance: " . ($response['resultMsg'] ?? 'Unknown error'));
+    }
+
+} catch (ApiException $e) {
+    abort("Branch insurance save failed: " . $e->getMessage());
+}
+
+/* ---------------------------- STEP 13: IMPORT ITEM SEARCH ---------------------------- */
+headerLine('STEP 13: IMPORT ITEM SEARCH');
+
+// try {
+//     // Prepare request data
+//     $requestData = [
+//         'lastReqDt' => lastReqDt('-30 days'),           // Fetch items modified in last 30 days
+//     ];
+
+//     // Call the API
+//     $response = $etims->selectImportedItems($requestData);
+
+//     // Check response
+//     if (($response['resultCd'] ?? '') === '000') {
+//         $itemList = $response['data']['itemList'] ?? [];
+//         echo "Import items found: " . count($itemList) . "\n";
+
+//         foreach ($itemList as $item) {
+//             echo "- Task: {$item['taskCd']}, Declaration: {$item['dclNo']}, Item: {$item['itemNm']}, Qty: {$item['qty']}\n";
+//         }
+//     } else {
+//         abort("Failed to fetch import items: " . ($response['resultMsg'] ?? 'Unknown error'));
+//     }
+
+// } catch (ApiException $e) {
+//     abort("Import item search failed: " . $e->getMessage());
+// }
+
+/* ---------------------------- STEP 14: IMPORT ITEM UPDATE ---------------------------- */
+headerLine('STEP 14: IMPORT ITEM UPDATE');
+
+try {
+    // Prepare request data
+    $requestData = [
+        'taskCd'          => '2231943',                       // Task code of import item
+        'dclDe'           => '20191217',                      // Declaration date YYYYMMDD
+        'itemSeq'         => 1,                                // Item sequence
+        'hsCd'            => '1231531231',                     // HS Code
+        'itemClsCd'       => '5022110801',                     // Item Classification Code
+        'itemCd'          => 'KE1NTXU0000001',                 // Item Code
+        'imptItemSttsCd'  => '1',                               // Import Item Status Code
+        'remark'          => 'Updated remark',                 // Optional remark
+        'modrId'          => 'Test',                            // Modifier ID
+        'modrNm'          => 'Test',                            // Modifier Name
+    ];
+
+    // Call the API
+    $response = $etims->updateImportedItem($requestData);
+
+    // Check response
+    if (($response['resultCd'] ?? '') === '000') {
+        echo "✅ Import item updated successfully\n";
+    } else {
+        abort("Failed to update import item: " . ($response['resultMsg'] ?? 'Unknown error'));
+    }
+
+} catch (ApiException $e) {
+    abort("Import item update failed: " . $e->getMessage());
+}
+
+/* ---------------------------- STEP 15: PURCHASE / SALES TRANSACTION QUERY ---------------------------- */
+headerLine('STEP 15: PURCHASE / SALES TRANSACTION QUERY');
+
+// try {
+//     // Prepare request data
+//     $requestData = [
+//         'lastReqDt' => lastReqDt('-30 days'),           // Fetch items modified in last 30 days
+//     ];
+
+//     // Call the API
+//     $response = $etims->selectPurchases($requestData);
+
+//     // Check response
+//     if (($response['resultCd'] ?? '') === '000') {
+//         echo "✅ Purchase/Sales transactions retrieved successfully\n";
+
+//         $saleList = $response['data']['saleList'] ?? [];
+
+//         foreach ($saleList as $sale) {
+//             echo "----------------------------------------\n";
+//             echo "Supplier PIN : {$sale['spplrTin']}\n";
+//             echo "Supplier Name: {$sale['spplrNm']}\n";
+//             echo "Invoice No   : {$sale['spplrInvcNo']}\n";
+//             echo "Sales Date   : {$sale['salesDt']}\n";
+//             echo "Total Amount : {$sale['totAmt']}\n";
+
+//             // Items
+//             foreach ($sale['itemList'] as $item) {
+//                 echo "  - Item: {$item['itemNm']} | Qty: {$item['qty']} | Total: {$item['totAmt']}\n";
+//             }
+//         }
+
+//     } else {
+//         abort(
+//             "Failed to retrieve purchase/sales transactions: "
+//             . ($response['resultMsg'] ?? 'Unknown error')
+//         );
+//     }
+
+// } catch (ApiException $e) {
+//     abort("Purchase/Sales transaction query failed: " . $e->getMessage());
+// }
+
+/* ---------------------------- STEP 16: PURCHASE TRANSACTION SAVE ---------------------------- */
+headerLine('STEP 16: PURCHASE TRANSACTION SAVE');
+
+try {
+    // Prepare request data
+    $requestData = [
+        // -------------------- Header --------------------
+        'invcNo'      => 1,                    // Invoice Number
+        'orgInvcNo'   => 0,                    // Original Invoice Number
+        'spplrTin'    => 'A123456789Z',         // Supplier PIN
+        'spplrBhfId'  => null,                 // Supplier Branch ID (optional)
+        'spplrNm'     => null,                 // Supplier Name (optional)
+        'spplrInvcNo' => null,                 // Supplier Invoice Number (optional)
+
+        'regTyCd'   => 'M',                    // Registration Type
+        'pchsTyCd'  => 'N',                    // Purchase Type
+        'rcptTyCd'  => 'P',                    // Receipt Type
+        'pmtTyCd'   => '01',                   // Payment Type
+        'pchsSttsCd'=> '02',                   // Purchase Status
+
+        'cfmDt'   => '20200127210300',          // Confirmed Date (YYYYMMDDhhmmss)
+        'pchsDt'  => '20200127',                // Purchase Date (YYYYMMDD)
+        'wrhsDt'  => null,                     // Warehousing Date
+        'cnclReqDt' => null,
+        'cnclDt'    => null,
+        'rfdDt'     => null,
+
+        // -------------------- Totals --------------------
+        'totItemCnt' => 2,
+
+        'taxblAmtA' => 0,
+        'taxblAmtB' => 10500,
+        'taxblAmtC' => 0,
+        'taxblAmtD' => 0,
+        'taxblAmtE' => 0,
+
+        'taxRtA' => 0,
+        'taxRtB' => 18,
+        'taxRtC' => 0,
+        'taxRtD' => 0,
+        'taxRtE' => 0,
+
+        'taxAmtA' => 0,
+        'taxAmtB' => 1890,
+        'taxAmtC' => 0,
+        'taxAmtD' => 0,
+        'taxAmtE' => 0,
+
+        'totTaxblAmt' => 10500,
+        'totTaxAmt'   => 1890,
+        'totAmt'      => 10500,
+
+        'remark' => null,
+
+        // -------------------- Audit --------------------
+        'regrId' => 'Test',
+        'regrNm' => 'Test',
+        'modrId' => 'Test',
+        'modrNm' => 'Test',
+
+        // -------------------- Items --------------------
         'itemList' => [
             [
-                'itemSeq'    => 1,
-                'itemCd'     => 'KE2NTBA00000001',  // Must exist in KRA system
-                'itemClsCd'  => '1000000000',
-                'itemNm'     => 'Brand A',
-                'barCd'      => '',                  // Nullable but REQUIRED field
-                'pkgUnitCd'  => 'NT',
-                'pkg'        => 1,                   // Package quantity
-                'qtyUnitCd'  => 'BA',
-                'qty'        => 90.0,
-                'prc'        => 1000.00,
-                'splyAmt'    => 81000.00,
-                'dcRt'       => 10.0,                // Discount rate %
-                'dcAmt'      => 9000.00,             // Discount amount
-                'isrccCd'    => null,                // Insurance code (nullable)
-                'isrccNm'    => null,
-                'isrcRt'     => null,
-                'isrcAmt'    => null,
-                'taxTyCd'    => 'C',                 // C = Zero-rated/Exempt
-                'taxblAmt'   => 81000.00,
-                'taxAmt'     => 0.00,
-                'totAmt'     => 81000.00,            // splyAmt - dcAmt + taxAmt
+                'itemSeq' => 1,
+                'itemCd'  => 'KE1NTXU0000001',
+                'itemClsCd' => '5059690800',
+                'itemNm'  => 'test item 1',
+                'bcd'     => null,
+
+                'spplrItemClsCd' => null,
+                'spplrItemCd'    => null,
+                'spplrItemNm'    => null,
+
+                'pkgUnitCd' => 'NT',
+                'pkg'       => 2,
+                'qtyUnitCd' => 'U',
+                'qty'       => 2,
+                'prc'       => 3500,
+                'splyAmt'  => 7000,
+                'dcRt'     => 0,
+                'dcAmt'    => 0,
+
+                'taxblAmt' => 7000,
+                'taxTyCd'  => 'B',
+                'taxAmt'   => 1260,
+                'totAmt'   => 7000,
+
+                'itemExprDt' => null,
+            ],
+            [
+                'itemSeq' => 2,
+                'itemCd'  => 'KE1NTXU0000002',
+                'itemClsCd' => '5022110801',
+                'itemNm'  => 'test item 2',
+                'bcd'     => null,
+
+                'spplrItemClsCd' => null,
+                'spplrItemCd'    => null,
+                'spplrItemNm'    => null,
+
+                'pkgUnitCd' => 'NT',
+                'pkg'       => 1,
+                'qtyUnitCd' => 'U',
+                'qty'       => 1,
+                'prc'       => 3500,
+                'splyAmt'  => 3500,
+                'dcRt'     => 0,
+                'dcAmt'    => 0,
+
+                'taxblAmt' => 3500,
+                'taxTyCd'  => 'B',
+                'taxAmt'   => 630,
+                'totAmt'   => 3500,
+
+                'itemExprDt' => null,
             ],
         ],
     ];
 
-    echo "Sending sales transaction with invoice #{$salesPayload['invcNo']}...\n";
-    $response = $etims->sendSalesTransaction($salesPayload);
+    // Call the API
+    $response = $etims->savePurchase($requestData);
 
-    echo "✓ Response:\n";
-    print_r($response);
-    
-    if (($response['resultCd'] ?? '') === '0000') {
-        printSuccess("Sales transaction sent successfully (resultCd: 0000)");
+    // Check response
+    if (($response['resultCd'] ?? '') === '000') {
+        echo "✅ Purchase transaction saved successfully\n";
     } else {
-        printWarning("Transaction accepted but check resultCd: " . ($response['resultCd'] ?? 'UNKNOWN'));
+        abort(
+            "Failed to save purchase transaction: "
+            . ($response['resultMsg'] ?? 'Unknown error')
+        );
     }
-} catch (ValidationException $e) {
-    printError("Validation failed:");
-    foreach ($e->getErrors() as $error) {
-        echo "  • $error\n";
-    }
-    echo "\n💡 FIX: Ensure payload matches Postman structure EXACTLY\n";
-    exit(1);
+
 } catch (ApiException $e) {
-    $details = $e->getDetails() ?? [];
-    $resultCd = $details['resultCd'] ?? 'UNKNOWN';
-    $resultMsg = $details['resultMsg'] ?? $e->getMessage();
-    
-    printError("API Error: $resultMsg (Code: $resultCd)");
-    
-    if ($resultCd === '500') {
-        echo "💡 Common causes:\n";
-        echo "   • Missing required field (check Postman example)\n";
-        echo "   • Invalid tax category code (must be A/B/C/D/E)\n";
-        echo "   • Future date in salesDt/cfmDt\n";
-        echo "   • Invoice number already used\n";
-    }
-    
-    if ($details) {
-        echo "Response details:\n";
-        print_r($details);
-    }
-    exit(1);
-} catch (Throwable $e) {
-    printError("Sales transaction failed: " . $e->getMessage());
-    exit(1);
+    abort("Purchase transaction save failed: " . $e->getMessage());
 }
 
-// -------------------------------------------------
-// TEST SUMMARY
-// -------------------------------------------------
-printHeader('✅ TEST SUITE COMPLETED SUCCESSFULLY');
+/* ---------------------------- STEP 17: STOCK MOVEMENT ---------------------------- */
+headerLine('STEP 17: STOCK MOVEMENT');
 
-echo "\n";
-echo "NEXT STEPS:\n";
-echo "  1. ✅ Replace placeholder credentials with KRA-approved values\n";
-echo "  2. ✅ Use ONLY pre-registered device serial (contact KRA for approval)\n";
-echo "  3. ✅ Keep cmcKey secure (required for all post-initialization requests)\n";
-echo "  4. ✅ Use SEQUENTIAL INTEGER invoice numbers (not strings with prefixes)\n";
-echo "  5. ✅ Ensure lastReqDt is NEVER in the future\n";
-echo "\n";
-echo "CRITICAL REMINDERS:\n";
-echo "  • All other endpoints require FULL headers (tin, bhfId, cmcKey)\n";
-echo "  • Device serial registration is MANDATORY (infrastructure-level check)\n";
-echo "  • Invoice numbers must be UNIQUE per branch\n";
-echo "  • Date formats: YYYYMMDD (salesDt) / YYYYMMDDHHmmss (cfmDt, lastReqDt)\n";
-echo "\n";
-echo "SUPPORT:\n";
-echo "  • KRA Sandbox Support: timsupport@kra.go.ke\n";
-echo "  • API Technical Issues: apisupport@kra.go.ke\n";
-echo "\n";
+// try {
+//     // Prepare request data
+//     $requestData = [
+//         'lastReqDt' => lastReqDt('-30 days'),           // Fetch items modified in last 30 days
+//     ];
+
+//     // Call the API
+//     $response = $etims->selectStockMovement($requestData);
+
+//     // Check response
+//     if (($response['resultCd'] ?? '') === '000') {
+//         echo "✅ Stock movement fetched successfully\n";
+
+//         // Print summary of stock movements
+//         foreach ($response['data']['stockList'] ?? [] as $stock) {
+//             echo "- Customer: {$stock['custTin']} | Branch: {$stock['custBhfId']} | SAR No: {$stock['sarNo']} | Date: {$stock['ocrnDt']}\n";
+//             foreach ($stock['itemList'] as $item) {
+//                 echo "  • Item: {$item['itemCd']} ({$item['itemNm']}) | Qty: {$item['qty']} | Total: {$item['totAmt']}\n";
+//             }
+//         }
+//     } else {
+//         abort("Failed to fetch stock movements: " . ($response['resultMsg'] ?? 'Unknown error'));
+//     }
+
+// } catch (ApiException $e) {
+//     abort("Stock movement request failed: " . $e->getMessage());
+// } catch (ValidationException $e) {
+//     echo "❌ Validation failed:\n";
+//     foreach ($e->getErrors() as $field => $msg) {
+//         echo "- Field '{$field}': {$msg}\n";
+//     }
+// }
+
+/* ---------------------------- STEP 18: STOCK IN/OUT SAVE ---------------------------- */
+headerLine('STEP 18: STOCK IN/OUT SAVE');
+
+try {
+    // Prepare request data
+    $requestData = [
+        'tin'       => 'A123456789Z',        // Your PIN
+        'bhfId'     => '00',                  // Branch ID
+        'sarNo'     => 2,                     // Stored and released number
+        'orgSarNo'  => 2,                     // Original stored/released number
+        'regTyCd'   => 'M',                   // Registration type
+        'custTin'   => 'A123456789Z',         // Customer PIN (optional)
+        'custNm'    => null,                  // Customer Name (optional)
+        'custBhfId' => null,                  // Customer Branch ID (optional)
+        'sarTyCd'   => '11',                  // Stock In/Out Type
+        'ocrnDt'    => '20260106',            // Occurred date YYYYMMDD
+        'totItemCnt'=> 2,                     // Total items
+        'totTaxblAmt'=> 70000,
+        'totTaxAmt' => 10677.96,
+        'totAmt'    => 70000,
+        'remark'    => null,
+        'regrId'    => 'Test',
+        'regrNm'    => 'Test',
+        'modrId'    => 'Test',
+        'modrNm'    => 'Test',
+
+        // -------------------- Items --------------------
+        'itemList' => [
+            [
+                'itemSeq'     => 1,
+                'itemCd'      => 'KE1NTXU0000001',
+                'itemClsCd'   => '5059690800',
+                'itemNm'      => 'test item1',
+                'bcd'         => null,
+                'pkgUnitCd'   => 'NT',
+                'pkg'         => 10,
+                'qtyUnitCd'   => 'U',
+                'qty'         => 10,
+                'itemExprDt'  => null,
+                'prc'         => 3500,
+                'splyAmt'     => 35000,
+                'totDcAmt'    => 0,
+                'taxblAmt'    => 35000,
+                'taxTyCd'     => 'B',
+                'taxAmt'      => 5338.98,
+                'totAmt'      => 35000,
+            ],
+            [
+                'itemSeq'     => 2,
+                'itemCd'      => 'KE1NTXU0000002',
+                'itemClsCd'   => '5059690800',
+                'itemNm'      => 'test item2',
+                'bcd'         => null,
+                'pkgUnitCd'   => 'BL',
+                'pkg'         => 10,
+                'qtyUnitCd'   => 'U',
+                'qty'         => 10,
+                'itemExprDt'  => null,
+                'prc'         => 3500,
+                'splyAmt'     => 35000,
+                'totDcAmt'    => 0,
+                'taxblAmt'    => 35000,
+                'taxTyCd'     => 'B',
+                'taxAmt'      => 5338.98,
+                'totAmt'      => 35000,
+            ],
+        ],
+    ];
+
+    // Call the API
+    $response = $etims->saveStockIO($requestData);
+
+    // Check response
+    if (($response['resultCd'] ?? '') === '000') {
+        echo "✅ Stock In/Out saved successfully\n";
+    } else {
+        abort("Failed to save Stock In/Out: " . ($response['resultMsg'] ?? 'Unknown error'));
+    }
+
+} catch (ApiException $e) {
+    abort("Stock In/Out request failed: " . $e->getMessage());
+} catch (ValidationException $e) {
+    echo "❌ Validation failed:\n";
+    foreach ($e->getErrors() as $field => $msg) {
+        echo "- Field '{$field}': {$msg}\n";
+    }
+}
+
+/* ---------------------------- STEP 20: SAVE STOCK MASTER ---------------------------- */
+headerLine('STEP 19: SAVE STOCK MASTER');
+
+try {
+    // Prepare request data
+    $requestData = [
+        'tin'     => 'A123456789Z',         // Your PIN
+        'bhfId'   => '00',                  // Branch ID
+        'itemCd'  => 'KE1NTXU0000002',     // Item Code
+        'rsdQty'  => 10,                    // Remaining quantity
+        'regrId'  => 'Test',                // Registration ID
+        'regrNm'  => 'Test',                // Registration Name
+        'modrId'  => 'Test',                // Modifier ID
+        'modrNm'  => 'Test',                // Modifier Name
+    ];
+
+    // Call the API
+    $response = $etims->saveStockMaster($requestData);
+
+    // Check response
+    if (($response['resultCd'] ?? '') === '000') {
+        echo "✅ Stock Master saved successfully\n";
+    } else {
+        abort("Failed to save Stock Master: " . ($response['resultMsg'] ?? 'Unknown error'));
+    }
+
+} catch (ApiException $e) {
+    abort("Stock Master save failed: " . $e->getMessage());
+} catch (ValidationException $e) {
+    echo "❌ Validation failed:\n";
+    foreach ($e->getErrors() as $field => $msg) {
+        echo "- Field '{$field}': {$msg}\n";
+    }
+}

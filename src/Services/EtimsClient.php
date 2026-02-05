@@ -17,124 +17,187 @@ class EtimsClient extends BaseClient
         return $this->validator->validate($data, $schema);
     }
 
-    // -----------------------------
-    // INITIALIZATION (POSTMAN-COMPLIANT)
-    // -----------------------------
-    public function initialize(array $data): array
+    /* -----------------------------
+     * INITIALIZATION
+     * ----------------------------- */
+    public function selectInitOsdcInfo(array $data): array
     {
-        // ✅ REMOVE FORCED targetPath (NOT IN POSTMAN SPEC)
-        // ✅ VALIDATE ONLY REQUIRED FIELDS (tin, bhfId, dvcSrlNo)
-        $validated = $this->validate($data, 'initialization');
-        
-        // Uses BaseClient::post() which now handles:
-        // - Correct headers (ONLY auth)
-        // - Token refresh on 401
-        // - KRA error unwrapping
-        return $this->post('initialize', $validated);
+        return $this->post(
+            'selectInitOsdcInfo',
+            $this->validate($data, 'initialization')
+        );
     }
 
-    // -----------------------------
-    // BASIC DATA ENDPOINTS
-    // -----------------------------
+    /* -----------------------------
+     * CODE LISTS
+     * ----------------------------- */
     public function selectCodeList(array $data): array
     {
-        return $this->post('selectCodeList', $this->validate($data, 'codeList'));
+        return $this->post(
+            'selectCodeList',
+            $this->validate($data, 'lastReqOnly')
+        );
     }
 
-    public function selectItemClsList(array $data): array
+    /* -----------------------------
+     * CUSTOMER / BRANCH
+     * ----------------------------- */
+    public function selectCustomer(array $data): array
     {
-        return $this->post('selectItemClsList', $this->validate($data, 'itemClsList'));
+        return $this->post(
+            'selectCustomer',
+            $this->validate($data, 'custSearchReq')
+        );
     }
 
-    public function selectBhfList(array $data): array
+    public function selectBranches(array $data): array
     {
-        return $this->post('selectBhfList', $this->validate($data, 'bhfList'));
+        return $this->post(
+            'selectBhfList',
+            $this->validate($data, 'lastReqOnly')
+        );
     }
 
-    public function selectNoticeList(array $data): array
+    public function saveBranchCustomer(array $data): array
     {
-        return $this->post('selectNoticeList', $this->validate($data, 'noticeList'));
+        return $this->post(
+            'saveBhfCustomer',
+            $this->validate($data, 'branchCustomer')
+        );
     }
 
-    public function selectTaxpayerInfo(array $data): array
+    public function saveBranchUser(array $data): array
     {
-        return $this->post('selectTaxpayerInfo', $this->validate($data, 'taxpayerInfo'));
+        return $this->post(
+            'saveBhfUser',
+            $this->validate($data, 'branchUser')
+        );
     }
 
-    public function selectCustomerList(array $data): array
+    public function saveBranchInsurance(array $data): array
     {
-        return $this->post('selectCustomerList', $this->validate($data, 'customerList'));
+        return $this->post(
+            'saveBhfInsurance',
+            $this->validate($data, 'branchInsurance')
+        );
     }
 
-    // -----------------------------
-    // PURCHASE ENDPOINTS
-    // -----------------------------
-    public function selectPurchaseTrns(array $data): array
+    /* -----------------------------
+     * ITEM
+     * ----------------------------- */
+    public function selectItemClasses(array $data): array
     {
-        return $this->post('selectPurchaseTrns', $this->validate($data, 'purchaseTrns'));
+        return $this->post(
+            'selectItemClsList',
+            $this->validate($data, 'lastReqOnly')
+        );
     }
 
-    // -----------------------------
-    // SALES ENDPOINTS
-    // -----------------------------
-    public function sendSalesTrns(array $data): array
+    public function selectItems(array $data): array
     {
-        return $this->post('sendSalesTrns', $this->validate($data, 'salesTrns'));
-    }
-
-    public function selectSalesTrns(array $data): array
-    {
-        return $this->post('selectSalesTrns', $this->validate($data, 'selectSalesTrns'));
-    }
-
-    // -----------------------------
-    // STOCK ENDPOINTS
-    // -----------------------------
-    public function selectMoveList(array $data): array
-    {
-        return $this->post('selectMoveList', $this->validate($data, 'moveList'));
-    }
-
-    public function saveStockMaster(array $data): array
-    {
-        return $this->post('saveStockMaster', $this->validate($data, 'stockMaster'));
-    }
-
-    // -----------------------------
-    // ADD MISSING ENDPOINTS FROM POSTMAN
-    // -----------------------------
-    public function branchInsuranceInfo(array $data): array
-    {
-        return $this->post('branchInsuranceInfo', $this->validate($data, 'branchInsurance'));
-    }
-
-    public function branchUserAccount(array $data): array
-    {
-        return $this->post('branchUserAccount', $this->validate($data, 'branchUserAccount'));
-    }
-
-    public function branchSendCustomerInfo(array $data): array
-    {
-        return $this->post('branchSendCustomerInfo', $this->validate($data, 'customerInfo'));
-    }
-
-    public function sendPurchaseTransactionInfo(array $data): array
-    {
-        return $this->post('sendPurchaseTransactionInfo', $this->validate($data, 'purchaseTransaction'));
-    }
-
-    public function sendSalesTransaction(array $data): array
-    {
-        return $this->post('sendSalesTransaction', $this->validate($data, 'salesTransaction'));
+        return $this->post(
+            'selectItemList',
+            $this->validate($data, 'lastReqOnly')
+        );
     }
 
     public function saveItem(array $data): array
     {
-        return $this->post('saveItem', $this->validate($data, 'item'));
+        return $this->post(
+            'saveItem',
+            $this->validate($data, 'saveItem')
+        );
     }
 
-    public function insertStockIO(array $data): array
+    public function saveItemComposition(array $data): array
     {
-        return $this->post('insertStockIO', $this->validate($data, 'stockIO'));
+        return $this->post(
+            'SaveItemComposition',
+            $this->validate($data, 'itemComposition')
+        );
+    }
+
+    /* -----------------------------
+     * IMPORTED ITEMS
+     * ----------------------------- */
+    public function selectImportedItems(array $data): array
+    {
+        return $this->post(
+            'selectImportItemList',
+            $this->validate($data, 'lastReqOnly')
+        );
+    }
+
+    public function updateImportedItem(array $data): array
+    {
+        return $this->post(
+            'updateImportItem',
+            $this->validate($data, 'importItemUpdate')
+        );
+    }
+
+    /* -----------------------------
+     * PURCHASES
+     * ----------------------------- */
+    public function selectPurchases(array $data): array
+    {
+        return $this->post(
+            'selectTrnsPurchaseSalesList',
+            $this->validate($data, 'lastReqOnly')
+        );
+    }
+
+    public function savePurchase(array $data): array
+    {
+        return $this->post(
+            'insertTrnsPurchase',
+            $this->validate($data, 'insertTrnsPurchase')
+        );
+    }
+
+    public function saveSalesTransaction(array $data): array
+    {
+        return $this->post(
+            'TrnsSalesSaveWrReq',
+            $this->validate($data, 'lastReqOnly')
+        );
+    }
+
+    /* -----------------------------
+     * STOCK
+     * ----------------------------- */
+    public function selectStockMovement(array $data): array
+    {
+        return $this->post(
+            'selectStockMoveList',
+            $this->validate($data, 'lastReqOnly')
+        );
+    }
+
+    public function saveStockIO(array $data): array
+    {
+        return $this->post(
+            'insertStockIO',
+            $this->validate($data, 'saveStockIO')
+        );
+    }
+
+    public function saveStockMaster(array $data): array
+    {
+        return $this->post(
+            'saveStockMaster',
+            $this->validate($data, 'stockMaster')
+        );
+    }
+
+    /* -----------------------------
+     * NOTICES
+     * ----------------------------- */
+    public function selectNoticeList(array $data): array
+    {
+        return $this->post(
+            'selectNoticeList',
+            $this->validate($data, 'lastReqOnly')
+        );
     }
 }

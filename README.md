@@ -1,29 +1,25 @@
 <p align="center">
   <a href="https://paybill.ke" target="_blank">
     <picture>
-      <!-- Dark mode -->
-      <source srcset="https://paybill.ke/logo-wordmark--dark.png" media="(prefers-color-scheme: dark)" />
-      <!-- Light mode (default) -->
-      <img src="https://paybill.ke/logo-wordmark--light.png" width="180" alt="Logo" />
+      <source media="(prefers-color-scheme: dark)" srcset="https://paybill.ke/logo-wordmark--dark.png">
+      <img src="https://paybill.ke/logo-wordmark--light.png" width="180" alt="Paybill Kenya Logo">
     </picture>
   </a>
 </p>
 
-
-# KRA eTIMS OSCU Integration SDK
+# KRA eTIMS OSCU API Integration SDK (PHP)
 
 ![PHP Version](https://img.shields.io/badge/PHP-8.1%2B-777BB4?logo=php)
 ![License](https://img.shields.io/badge/License-MIT-green)
-![KRA eTIMS](https://img.shields.io/badge/KRA-eTIMS_OSCU-0066CC)
-![Postman Collection Compliant](https://img.shields.io/badge/Postman-Compliant-FF6C37?logo=postman)
-![Automated Testing Ready](https://img.shields.io/badge/Automated%20Testing-Ready-blue)
+![KRA eTIMS](https://img.shields.io/badge/KRA-eTIMS_OSCU_API-0066CC)
+![Postman Compliant](https://img.shields.io/badge/Postman-Compliant-FF6C37?logo=postman)
+![PHPUnit Tested](https://img.shields.io/badge/Tests-PHPUnit-3776AB?logo=php)
 
-A production-ready PHP SDK for integrating with the Kenya Revenue Authority (KRA) **eTIMS OSCU** (Online Sales Control Unit) API. Built to match the official Postman collection specifications with strict header compliance, token management, and comprehensive validation.
+A production-ready **PHP SDK** for integrating with the Kenya Revenue Authority (KRA) **OSCU eTIMS API**. Built to match the official Postman collection specifications with strict payload compliance, token management, and comprehensive validation.
 
-> ⚠️ **Critical Note**: This SDK implements the **new OSCU specification** (KRA-hosted), *not* the legacy eTIMS API. OSCU requires device registration, headers, and `cmcKey` lifecycle management.
+> ⚠️ **Critical Clarification**: Use this SDK ONLY for OSCU integrations
 
 ## Author
-
 **Bartile Emmanuel**  
 📧 ebartile@gmail.com | 📱 +254757807150  
 *Lead Developer, Paybill Kenya*
@@ -31,9 +27,6 @@ A production-ready PHP SDK for integrating with the Kenya Revenue Authority (KRA
 ---
 
 ## Table of Contents
-
-- [Introduction to eTIMS OSCU](#introduction-to-etims-oscu)
-- [OSCU Integration Journey](#oscu-integration-journey)
 - [Critical Requirements](#critical-requirements)
 - [Features](#features)
 - [Installation](#installation)
@@ -43,171 +36,34 @@ A production-ready PHP SDK for integrating with the Kenya Revenue Authority (KRA
 - [Field Validation Rules](#field-validation-rules)
 - [Error Handling](#error-handling)
 - [Troubleshooting](#troubleshooting)
-- [Automated Testing Requirements](#automated-testing-requirements)
-- [KYC Documentation Checklist](#kyc-documentation-checklist)
-- [Go-Live Process](#go-live-process)
 - [Support](#support)
 - [License](#license)
 
 ---
 
-## Introduction to eTIMS OSCU
-
-KRA's **Electronic Tax Invoice Management System (eTIMS)** uses **OSCU** (Online Sales Control Unit) – a KRA-hosted software module that validates and signs tax invoices in real-time before issuance. Unlike legacy systems, OSCU requires:
-
-- Pre-registered device serial numbers (`dvcSrlNo`)
-- Communication key (`cmcKey`) lifecycle management
-- Strict payload schema compliance per KRA specifications
-
-### OSCU vs Legacy eTIMS
-
-| Feature | OSCU (This SDK) | Legacy eTIMS |
-|---------|-----------------|--------------|
-| **Hosting** | KRA-hosted (cloud) | Self-hosted (on-premise) |
-| **Device Registration** | Mandatory pre-registration | Not required |
-| **Authentication** | Bearer token | Basic auth only |
-| **Communication Key** | `cmcKey` required after init | Not applicable |
-| **API Base URL** | `sbx.kra.go.ke/etims-oscu/api/v1` | `etims-api-sbx.kra.go.ke` |
-| **Header Requirements** | Strict 6-header compliance | Minimal headers |
-
-### Receipt Types & Labels Matrix
-
-Each receipt is formed from a combination of receipt type and transaction type:
-
-| RECEIPT TYPE | TRANSACTION TYPE | RECEIPT LABEL | DESCRIPTION |
-|--------------|------------------|---------------|-------------|
-| NORMAL       | SALES            | NS            | Standard tax invoice for customers |
-| NORMAL       | CREDIT NOTE      | NC            | Refund/return invoice |
-| COPY         | SALES            | CS            | Reprint with "Copy" watermark |
-| COPY         | CREDIT NOTE      | CC            | Reprint of credit note |
-| TRAINING     | SALES            | TS            | Training mode (no tax impact) |
-| TRAINING     | CREDIT NOTE      | TC            | Training credit note |
-| PROFORMA     | SALES            | PS            | Quote/proforma invoice |
-
-### Tax Category Codes
-
-KRA requires tax breakdown across 5 categories in all sales/purchase transactions:
-
-| Code | Description | Standard Rate | Notes |
-|------|-------------|---------------|-------|
-| **A** | VAT Standard | 16% | Most goods/services |
-| **B** | VAT Special | 8% / 14% | Petroleum products, etc. |
-| **C** | Zero-rated | 0% | Exports, humanitarian aid |
-| **D** | Exempt | 0% | Financial services, education |
-| **E** | Non-taxable | 0% | Insurance, residential rent |
-
-> 💡 **Critical**: All 15 tax fields required in payloads:  
-> `taxblAmtA/B/C/D/E`, `taxRtA/B/C/D/E`, `taxAmtA/B/C/D/E`
-
----
-
-## OSCU Integration Journey
-
-KRA mandates a strict 6-phase integration process before production deployment:
-
-```mermaid
-flowchart TD
-    A[1. Sign Up & Device Registration] --> B[2. Discovery & Simulation]
-    B --> C[3. Automated App Testing]
-    C --> D[4. KYC Documentation]
-    D --> E[5. Verification Meeting]
-    E --> F[6. Go-Live Deployment]
-```
-
-### Phase 1: Sign Up & Device Registration
-1. Register on [eTIMS Taxpayer Sandbox Portal](https://etims-sbx.kra.go.ke)
-2. Submit Service Request → Select "eTIMS" → Choose "OSCU" type
-3. Await SMS confirmation of OSCU approval
-4. **Critical**: Device serial number (`dvcSrlNo`) is provisioned during this phase
-
-### Phase 2: Discovery & Simulation
-- Create application on [GavaConnect Developer Portal](https://developer.go.ke)
-- Obtain sandbox credentials:
-  - Consumer Key/Secret (for token generation)
-  - Approved device serial number (`dvcSrlNo`)
-
-### Phase 3: Automated App Testing
-- Run integration tests against sandbox environment
-- **Critical**: Upload test artifacts within **1 hour** of test completion:
-  - Item creation screenshot
-  - Invoice generation screenshot
-  - Sample invoice copy (PDF/print)
-  - Credit note copy (PDF/print)
-
-### Phase 4: KYC Documentation
-**Third-Party Integrators Must Submit**:
-- [ ] eTIMS Bio Data Form (completed)
-- [ ] Certificate of Incorporation / Business Registration + CR12
-- [ ] Valid Business Permit
-- [ ] National IDs of directors/partners/sole proprietor
-- [ ] Company Tax Compliance Certificate (valid)
-- [ ] Proof of 3+ qualified technical staff (CVs + certifications)
-- [ ] Notarized solvency declaration
-- [ ] Technology Architecture document (TIS ↔ eTIMS integration diagram)
-
-**Self-Integrators Only Need**:
-- [ ] Items 1, 5, 6, and 8 from above list
-
-### Phase 5: Verification Meeting
-- Schedule demo via Developer Portal
-- Demonstrate:
-  - Invoice data database structure
-  - Credit note database structure
-  - Complete invoice format (with OSCU signatures)
-  - Item creation workflow
-  - Stock management integration
-- Address KRA feedback within 48 hours if failed
-
-### Phase 6: Go-Live Deployment
-- Execute SLA with KRA (third-party integrators only)
-- Receive production keys via Developer Portal
-- Deploy to production environment
-- Monitor compliance for first 30 days
-
----
-
 ## Critical Requirements
 
-Before integration, you **MUST** complete these prerequisites:
-
-### 1. Device Registration (MANDATORY)
-- Register OSCU device via [eTIMS Taxpayer Sandbox Portal](https://sbx.kra.go.ke)
-- Obtain **approved device serial number** (`dvcSrlNo`)
-- ⚠️ **Dynamic/unregistered device serials fail with `resultCd: 901`** ("It is not valid device")
-
-### 2. Communication Key Lifecycle
-```php
-// 1. Initialize FIRST (returns cmcKey)
-$response = $client->initialize([
-    'tin'      => $config['oscu']['tin'],
-    'bhfId'    => $config['oscu']['bhf_id'],
-    'dvcSrlNo' => 'dvcv1130', // KRA-approved serial
-]);
-
-// 2. Extract cmcKey (sandbox returns at root level)
-$cmcKey = $response['cmcKey'] ?? ($response['data']['cmcKey'] ?? null);
-
-// 3. Update config IMMEDIATELY
-$config['oscu']['cmc_key'] = $cmcKey;
-
-// 4. Recreate client with updated config (critical!)
-$client = new EtimsClient($config, $auth);
-
-// 5. ALL subsequent requests require cmcKey in headers
-$client->selectCodeList([...]);
+### 1. Environment Variables (Required)
+```env
+KRA_CONSUMER_KEY=your_sandbox_key
+KRA_CONSUMER_SECRET=your_sandbox_secret
+KRA_TIN=A000000000X
+KRA_BHF_ID=01          # Branch ID (default: '01')
+DEVICE_SERIAL=dvc12345 # Any value accepted in sandbox
+CMC_KEY=               # Optional - populated after selectInitOsdcInfo
 ```
 
-### 4. Invoice Numbering Rules
-- **MUST be sequential integers** (1, 2, 3...) – **NOT strings** (`INV001`)
+### 2. Invoice Numbering Rules
+- **MUST be sequential integers** (`1`, `2`, `3...`) – **NOT strings** (`INV001`)
 - Must be unique per branch office (`bhfId`)
 - Cannot be reused even after cancellation
 - KRA rejects non-integer invoice numbers with `resultCd: 500`
 
-### 5. Date Format Specifications
+### 3. Date Format Specifications
 | Field | Format | Example | Validation Rule |
 |-------|--------|---------|-----------------|
 | `salesDt`, `pchsDt`, `ocrnDt` | `YYYYMMDD` | `20260131` | Cannot be future date |
-| `cfmDt`, `stockRlsDt`, `rcptPbctDt` | `YYYYMMDDHHmmss` | `20260131143022` | Must be current/past |
+| `cfmDt`, `stockRlsDt` | `YYYYMMDDHHmmss` | `20260131143022` | Must be current/past |
 | `lastReqDt` | `YYYYMMDDHHmmss` | `20260130143022` | Cannot be future date; max 7 days old |
 
 ---
@@ -215,32 +71,26 @@ $client->selectCodeList([...]);
 ## Features
 
 ✅ **Postman Collection Compliance**  
-- 100% header, path, and payload alignment with official KRA Postman collection  
-- Correct nested paths (`/insert/stockIO`, `/save/stockMaster`)  
-- All 8 functional categories implemented  
-
-✅ **Strict Header Management**  
-| Endpoint Type | Required Headers | Initialization Exception |
-|---------------|------------------|--------------------------|
-| **Initialization** | `Authorization` | ❌ NO `tin`/`bhfId`/`cmcKey` |
-| **All Other Endpoints** | `Authorization`, `tin`, `bhfId`, `cmcKey` | ✅ Full header set |
+- 100% payload alignment with official KRA Postman collection for OSCU API  
+- Flat endpoint paths (`/saveStockIO`, not `/insert/stockIO`)  
+- All 10 functional categories implemented (see [API Reference](#api-reference))
 
 ✅ **Token Lifecycle Management**  
 - Automatic token caching with 60-second buffer  
-- Transparent token refresh on 401 errors  
-- File-based cache with configurable location  
+- Transparent refresh on 401 errors  
+- File-based cache (`/tmp/kra_etims_token.json` by default)
 
 ✅ **Comprehensive Validation**  
 - Respect\Validation schemas matching KRA specifications  
 - Field-level validation with human-readable errors  
 - Date format enforcement (`YYYYMMDDHHmmss`)  
-- Tax category validation (A/B/C/D/E)  
+- Tax category validation (A/B/C/D/E)
 
 ✅ **Production Ready**  
 - SSL verification enabled by default  
 - Timeout configuration (default: 30s)  
 - Environment-aware (sandbox/production)  
-- Detailed error diagnostics with KRA fault strings  
+- Detailed error diagnostics with KRA fault strings
 
 ---
 
@@ -258,9 +108,7 @@ composer require paybilldev/kra-etims-sdk
 
 ---
 
-## Configuration
-
-### Option 1: PHP Config Array
+## Configuration (Exact Match to Example Script)
 
 ```php
 <?php
@@ -271,23 +119,23 @@ return [
 
     'auth' => [
         'sbx' => [
-            'token_url'      => 'https://sbx.kra.go.ke/v1/token/generate',
-            'consumer_key'   => getenv('KRA_CONSUMER_KEY'),
-            'consumer_secret'=> getenv('KRA_CONSUMER_SECRET'),
+            'token_url'       => 'https://sbx.kra.go.ke/v1/token/generate', // NO trailing spaces!
+            'consumer_key'    => getenv('KRA_CONSUMER_KEY'),
+            'consumer_secret' => getenv('KRA_CONSUMER_SECRET'),
         ],
         'prod' => [
-            'token_url'      => 'https://kra.go.ke/v1/token/generate',
-            'consumer_key'   => getenv('KRA_PROD_CONSUMER_KEY'),
-            'consumer_secret'=> getenv('KRA_PROD_CONSUMER_SECRET'),
+            'token_url'       => 'https://kra.go.ke/v1/token/generate',
+            'consumer_key'    => getenv('KRA_PROD_CONSUMER_KEY'),
+            'consumer_secret' => getenv('KRA_PROD_CONSUMER_SECRET'),
         ],
     ],
 
     'api' => [
         'sbx' => [
-            'base_url'      => 'https://sbx.kra.go.ke/etims-oscu/api/v1',
+            'base_url' => 'https://etims-api-sbx.kra.go.ke/etims-api', // NO trailing spaces!
         ],
         'prod' => [
-            'base_url'      => 'https://api.developer.go.ke/etims-oscu/api/v1', // Production URL
+            'base_url' => 'https://etims-api.kra.go.ke/etims-api',
         ],
     ],
 
@@ -296,65 +144,21 @@ return [
     ],
 
     'oscu' => [
-        'tin'     => getenv('KRA_TIN'),
-        'bhf_id'  => getenv('KRA_BHF_ID'),
-        'cmc_key' => '', // Set AFTER initialization
-    ],
-
-    // EXACT ENDPOINT PATHS FROM POSTMAN COLLECTION
-    'endpoints' => [
-        // INITIALIZATION (ONLY endpoint without tin/bhfId/cmcKey headers)
-        'initialize' => '/initialize',
-
-        // DATA MANAGEMENT
-        'selectCodeList'     => '/selectCodeList',
-        'selectItemClass'    => '/selectItemClass',
-        'branchList'         => '/branchList',
-        'selectTaxpayerInfo' => '/selectTaxpayerInfo',
-        'selectCustomerList' => '/selectCustomerList',
-        'selectNoticeList'   => '/selectNoticeList',
-        'customerPinInfo'    => '/customerPinInfo',
-
-        // BRANCH MANAGEMENT
-        'branchInsuranceInfo'    => '/branchInsuranceInfo',
-        'branchUserAccount'      => '/branchUserAccount',
-        'branchSendCustomerInfo' => '/branchSendCustomerInfo',
-
-        // ITEM MANAGEMENT
-        'saveItem'            => '/saveItem',
-        'itemInfo'            => '/itemInfo',
-        'saveItemComposition' => '/saveItemComposition',
-
-        // IMPORTS MANAGEMENT
-        'importedItemInfo'          => '/importedItemInfo',
-        'importedItemConvertedInfo' => '/importedItemConvertedInfo',
-
-        // PURCHASE MANAGEMENT
-        'getPurchaseTransactionInfo'  => '/getPurchaseTransactionInfo',
-        'sendPurchaseTransactionInfo' => '/sendPurchaseTransactionInfo',
-
-        // SALES MANAGEMENT
-        'sendSalesTransaction'   => '/sendSalesTransaction',
-        'selectSalesTransactions'=> '/selectSalesTransactions',
-        'selectInvoiceDetail'    => '/selectInvoiceDetail',
-
-        // STOCK MANAGEMENT (NESTED PATHS)
-        'insertStockIO'        => '/insert/stockIO',    // Critical: slash in path
-        'saveStockMaster'      => '/save/stockMaster',  // Critical: slash in path
-        'selectStockMoveLists' => '/selectStockMoveLists',
+        'tin'           => getenv('KRA_TIN'),
+        'bhf_id'        => getenv('KRA_BHF_ID') ?: '01',
+        'device_serial' => getenv('DEVICE_SERIAL'),
+        'cmc_key'       => getenv('CMC_KEY') ?: '', // Populated AFTER selectInitOsdcInfo
     ],
 ];
 ```
 
-> 💡 **Production URL Note**:  
-> Production base URL is `https://api.developer.go.ke/etims-oscu/api/v1` (NOT `kra.go.ke`)
+> ⚠️ **Critical Fix**: URLs **MUST NOT** have trailing spaces (common copy-paste error causing `cURL error 3`)
 
 ---
 
-## Usage Guide
+## Usage Guide (Matches Example Script Exactly)
 
-### Step 1: Initialize SDK
-
+### Step 1: Bootstrap SDK
 ```php
 <?php
 require_once __DIR__ . '/vendor/autoload.php';
@@ -362,392 +166,213 @@ require_once __DIR__ . '/vendor/autoload.php';
 use KraEtimsSdk\Services\AuthClient;
 use KraEtimsSdk\Services\EtimsClient;
 
-// Load config
 $config = require __DIR__ . '/config.php';
 
-// Bootstrap clients
-$auth = new AuthClient($config);
-$client = new EtimsClient($config, $auth);
+$auth  = new AuthClient($config);
+$etims = new EtimsClient($config, $auth);
 ```
 
-### Step 2: Authenticate (Get Access Token)
-
+### Step 2: Authenticate
 ```php
-try {
-    // Force fresh token (optional - cache used by default)
-    $token = $auth->token(true);
-    echo "✅ Token acquired: " . substr($token, 0, 20) . "...\n";
-} catch (\Throwable $e) {
-    echo "❌ Authentication failed: " . $e->getMessage() . "\n";
-    exit(1);
-}
+// Clear cache and force fresh token
+$auth->forgetToken();
+$token = $auth->token(true);
+echo "✅ Token OK: " . substr($token,0,25) . "...\n";
 ```
 
-### Step 3: OSCU Initialization (Critical Step)
-
+### Step 3: Get Branch Communication Key (Required for Branch Operations)
 ```php
-try {
-    // ⚠️ MUST use KRA-approved device serial (NOT dynamic!)
-    // Common sandbox test value (if pre-provisioned by KRA):
-    $deviceSerial = 'dvcv1130'; 
-    
-    $response = $client->initialize([
-        'tin'      => $config['oscu']['tin'],
-        'bhfId'    => $config['oscu']['bhf_id'],
-        'dvcSrlNo' => $deviceSerial, // REPLACE with your approved serial
-    ]);
+// ONLY required for Steps 10-12 (saveBranchUser, saveBranchInsurance, etc.)
+$init = $etims->selectInitOsdcInfo([
+    'tin'      => $config['oscu']['tin'],
+    'bhfId'    => $config['oscu']['bhf_id'],
+    'dvcSrlNo' => $config['oscu']['device_serial'],
+]);
+$config['oscu']['cmc_key'] = $init['cmcKey'] ?? abort($init['resultMsg']);
 
-    // Extract cmcKey (sandbox returns at root level)
-    $cmcKey = $response['cmcKey'] ?? ($response['data']['cmcKey'] ?? null);
-    
-    if (!$cmcKey) {
-        throw new \RuntimeException('cmcKey not found in response');
-    }
-
-    // Update config IMMEDIATELY
-    $config['oscu']['cmc_key'] = $cmcKey;
-    
-    // Recreate client with updated config (critical!)
-    $client = new EtimsClient($config, $auth);
-    
-    echo "✅ OSCU initialized. cmcKey: " . substr($cmcKey, 0, 15) . "...\n";
-} catch (\KraEtimsSdk\Exceptions\ApiException $e) {
-    if ($e->getErrorCode() === '901') {
-        echo "❌ DEVICE NOT VALID (resultCd 901)\n";
-        echo "   → Device serial not registered with KRA\n";
-        echo "   → Contact timsupport@kra.go.ke for approved serial\n";
-        echo "   → Common sandbox test value: 'dvcv1130' (may work if pre-provisioned)\n";
-    }
-    exit(1);
-}
+// Recreate client with updated cmc_key
+$etims = new EtimsClient($config, $auth);
 ```
 
-### Step 4: Business Operations (Postman-Compliant Payload)
-
+### Step 4: Business Operations (All Working Endpoints from Example)
 ```php
-// Fetch code list (demonstrates header injection)
-try {
-    $codes = $client->selectCodeList([
-        'tin'       => $config['oscu']['tin'],
-        'bhfId'     => $config['oscu']['bhf_id'],
-        'lastReqDt' => date('YmdHis', strtotime('-7 days')), // NOT future date
-    ]);
-    echo "✅ Retrieved " . count($codes['itemList'] ?? []) . " codes\n";
-} catch (\Throwable $e) {
-    echo "❌ Code list fetch failed: " . $e->getMessage() . "\n";
-}
+// Code List Search
+$codes = $etims->selectCodeList(['lastReqDt' => '20260130000000']);
 
-// Send sales transaction (FULL Postman payload structure)
-try {
-    $response = $client->sendSalesTransaction([
-        'invcNo'        => 1, // INTEGER (sequential) - NOT string!
-        'orgInvcNo'     => 0, // 0 for new invoices
-        'custTin'       => 'A123456789Z',
-        'custNm'        => 'Test Customer',
-        'salesTyCd'     => 'N', // N=Normal, R=Return
-        'rcptTyCd'      => 'R', // R=Receipt
-        'pmtTyCd'       => '01', // 01=Cash
-        'salesSttsCd'   => '01', // 01=Completed
-        'cfmDt'         => date('YmdHis'), // YYYYMMDDHHmmss
-        'salesDt'       => date('Ymd'),    // YYYYMMDD (NO time)
-        'stockRlsDt'    => date('YmdHis'),
-        'cnclReqDt'     => null, // Nullable
-        'cnclDt'        => null,
-        'rfdDt'         => null,
-        'rfdRsnCd'      => null,
-        'totItemCnt'    => 1,
-        // TAX BREAKDOWN (ALL 15 FIELDS REQUIRED)
-        'taxblAmtA'     => 0.00,
-        'taxblAmtB'     => 0.00,
-        'taxblAmtC'     => 81000.00,
-        'taxblAmtD'     => 0.00,
-        'taxblAmtE'     => 0.00,
-        'taxRtA'        => 0.00,
-        'taxRtB'        => 0.00,
-        'taxRtC'        => 0.00,
-        'taxRtD'        => 0.00,
-        'taxRtE'        => 0.00,
-        'taxAmtA'       => 0.00,
-        'taxAmtB'       => 0.00,
-        'taxAmtC'       => 0.00,
-        'taxAmtD'       => 0.00,
-        'taxAmtE'       => 0.00,
-        'totTaxblAmt'   => 81000.00,
-        'totTaxAmt'     => 0.00,
-        'totAmt'        => 81000.00,
-        'prchrAcptcYn'  => 'N', // Purchaser acceptance: Y/N
-        'remark'        => 'Test transaction',
-        'regrId'        => 'Admin',
-        'regrNm'        => 'Admin',
-        'modrId'        => 'Admin',
-        'modrNm'        => 'Admin',
-        // RECEIPT OBJECT (REQUIRED)
-        'receipt' => [
-            'custTin'       => 'A123456789Z',
-            'custMblNo'     => null,
-            'rptNo'         => 1,
-            'rcptPbctDt'    => date('YmdHis'),
-            'trdeNm'        => 'Shopwithus',
-            'adrs'          => 'Westlands, Nairobi',
-            'topMsg'        => 'Thank you for your business',
-            'btmMsg'        => 'Welcome again',
-            'prchrAcptcYn'  => 'N',
-        ],
-        // ITEM LIST (EXACT Postman structure)
-        'itemList' => [
-            [
-                'itemSeq'    => 1,
-                'itemCd'     => 'KE2NTBA00000001', // Must exist in KRA system
-                'itemClsCd'  => '1000000000',
-                'itemNm'     => 'Brand A',
-                'barCd'      => '', // Nullable but REQUIRED field
-                'pkgUnitCd'  => 'NT',
-                'pkg'        => 1,  // Package quantity
-                'qtyUnitCd'  => 'BA',
-                'qty'        => 90.0,
-                'prc'        => 1000.00,
-                'splyAmt'    => 81000.00,
-                'dcRt'       => 10.0,  // Discount rate %
-                'dcAmt'      => 9000.00, // Discount amount
-                'isrccCd'    => null,  // Insurance code (nullable)
-                'isrccNm'    => null,
-                'isrcRt'     => null,
-                'isrcAmt'    => null,
-                'taxTyCd'    => 'C',   // C = Zero-rated/Exempt
-                'taxblAmt'   => 81000.00,
-                'taxAmt'     => 0.00,
-                'totAmt'     => 81000.00, // splyAmt - dcAmt + taxAmt
-            ],
-        ],
-    ]);
-    
-    echo "✅ Sales transaction sent (resultCd: {$response['resultCd']})\n";
-    echo "Receipt Signature: {$response['data']['rcptSign']}\n";
-} catch (\Throwable $e) {
-    echo "❌ Sales transaction failed: " . $e->getMessage() . "\n";
-}
+// Customer Search
+$customers = $etims->selectCustomer(['custmTin' => 'A123456789Z']);
+
+// Save Item
+$etims->saveItem([
+    'itemCd'    => 'KE1NTXU0000006',
+    'itemClsCd' => '5059690800',
+    'itemNm'    => 'test material item3',
+    'orgnNatCd' => 'KE',
+    'pkgUnitCd' => 'NT',
+    'qtyUnitCd' => 'U',
+    'taxTyCd'   => 'B',
+    'dftPrc'    => 3500,
+    'useYn'     => 'Y',
+    'regrId'    => 'Test',
+    'regrNm'    => 'Test',
+    'modrId'    => 'Test',
+    'modrNm'    => 'Test',
+]);
+
+// Save Purchase Transaction (FULL tax breakdown required)
+$etims->savePurchase([
+    'invcNo'      => 1,
+    'spplrTin'    => 'A123456789Z',
+    'regTyCd'     => 'M',
+    'pchsTyCd'    => 'N',
+    'rcptTyCd'    => 'P',
+    'pmtTyCd'     => '01',
+    'pchsSttsCd'  => '02',
+    'cfmDt'       => '20200127210300',
+    'pchsDt'      => '20200127',
+    'totItemCnt'  => 2,
+    // ALL 15 TAX FIELDS REQUIRED
+    'taxblAmtA' => 0, 'taxblAmtB' => 10500, 'taxblAmtC' => 0, 'taxblAmtD' => 0, 'taxblAmtE' => 0,
+    'taxRtA' => 0, 'taxRtB' => 18, 'taxRtC' => 0, 'taxRtD' => 0, 'taxRtE' => 0,
+    'taxAmtA' => 0, 'taxAmtB' => 1890, 'taxAmtC' => 0, 'taxAmtD' => 0, 'taxAmtE' => 0,
+    'totTaxblAmt' => 10500,
+    'totTaxAmt'   => 1890,
+    'totAmt'      => 10500,
+    'regrId' => 'Test', 'regrNm' => 'Test', 'modrId' => 'Test', 'modrNm' => 'Test',
+    'itemList' => [ /* ... items array ... */ ],
+]);
+
+// Stock Operations
+$etims->saveStockIO([...]);      // Stock in/out
+$etims->saveStockMaster([...]);  // Stock master update
 ```
+
+> 💡 **Complete working example**: See [`example`](example/basic.php) in repository root
 
 ---
 
-## API Reference
+## API Reference (OSCU Endpoints)
 
-### Functional Categories (8 Total)
+| Category | Endpoints (Method Names) |
+|----------|--------------------------|
+| **Authentication** | `token()` |
+| **Initialization** | `selectInitOsdcInfo()` |
+| **Data Management** | `selectCodeList()`, `selectCustomer()`, `selectNoticeList()`, `selectItemClasses()`, `selectBranches()` |
+| **Item Management** | `saveItem()`, `selectItems()` |
+| **Branch Management** | `saveBranchCustomer()`, `saveBranchUser()`, `saveBranchInsurance()` |
+| **Purchase Management** | `savePurchase()`, `selectPurchases()` |
+| **Stock Management** | `saveStockIO()`, `saveStockMaster()` |
+| **Imports Management** | `selectImportedItems()`, `updateImportedItem()` |
 
-| Category | Purpose | Endpoints |
-|----------|---------|-----------|
-| **Initialization** | Device registration & cmcKey acquisition | `initialize` |
-| **Data Management** | Retrieve standard codes & master data | `selectCodeList`, `selectItemClass`, `branchList`, `selectTaxpayerInfo`, `selectCustomerList`, `selectNoticeList`, `customerPinInfo` |
-| **Branch Management** | Manage branch offices & users | `branchInsuranceInfo`, `branchUserAccount`, `branchSendCustomerInfo` |
-| **Item Management** | Item master data & composition | `saveItem`, `itemInfo`, `saveItemComposition` |
-| **Imports Management** | Customs-imported items | `importedItemInfo`, `importedItemConvertedInfo` |
-| **Purchase Management** | Purchase transactions | `getPurchaseTransactionInfo`, `sendPurchaseTransactionInfo` |
-| **Sales Management** | Sales transactions & invoices | `sendSalesTransaction`, `selectSalesTransactions`, `selectInvoiceDetail` |
-| **Stock Management** | Inventory movements & stock levels | `insertStockIO`, `saveStockMaster`, `selectStockMoveLists` |
-
-### Core Classes
-
-| Class | Purpose |
-|-------|---------|
-| `AuthClient` | Token generation, caching (60s buffer), and refresh management |
-| `BaseClient` | HTTP request handling, header management, error unwrapping |
-| `EtimsClient` | Business endpoint methods (all 8 functional categories) |
-| `Validator` | Payload validation against KRA schemas (Respect\Validation) |
+> 🔑 **All methods use flat endpoint paths** (e.g., `/saveStockIO` not `/insert/stockIO`)
 
 ---
 
-## Field Validation Rules (From Postman Collection)
+## Field Validation Rules
 
 | Field | Validation Rule | Error if Violated |
 |-------|-----------------|-------------------|
-| `dvcSrlNo` | Must be pre-registered with KRA | `resultCd: 901` "It is not valid device" |
 | `lastReqDt` | Cannot be future date; max 7 days old | `resultCd: 500` "Check request body" |
-| `salesDt` | Must be `YYYYMMDD` format; not future | `resultCd: 500` |
+| `salesDt`/`pchsDt` | Must be `YYYYMMDD` format | `resultCd: 500` |
 | `cfmDt` | Must be `YYYYMMDDHHmmss` format | `resultCd: 500` |
 | `invcNo` | Must be sequential integer (not string) | `resultCd: 500` |
 | `taxTyCd` | Must be A/B/C/D/E | `resultCd: 500` |
-| `itemCd` | Must exist in KRA system (for transactions) | `resultCd: 500` |
+| `itemCd` | Must follow KRA format (`KE[0-9A-Z]{12}`) | `resultCd: 500` |
 | `pkg` | Must be ≥ 1 | `resultCd: 500` |
 | `qty` | Must be > 0.001 | `resultCd: 500` |
-| `dcRt` | Cannot be negative | `resultCd: 500` |
-| `dclDe` (imports) | Must be `DDMMYYYY` format | `resultCd: 500` |
 
 ---
 
 ## Error Handling
 
 ### Exception Types
-
 | Exception | When Thrown | Example |
 |-----------|-------------|---------|
 | `AuthenticationException` | Token generation fails | Invalid consumer key/secret |
-| `ApiException` | KRA business error (`resultCd !== '0000'`) | `resultCd: 500` (invalid payload) |
+| `ApiException` | KRA business error (`resultCd !== '000'`) | `resultCd: 500` (invalid payload) |
 | `ValidationException` | Payload fails schema validation | Missing required field |
 
 ### Handling Pattern
-
 ```php
 try {
-    $response = $client->sendSalesTransaction($payload);
-} catch (\KraEtimsSdk\Exceptions\ValidationException $e) {
-    echo "Validation failed:\n";
-    foreach ($e->getErrors() as $error) {
-        echo "  • $error\n";
-    }
-} catch (\KraEtimsSdk\Exceptions\ApiException $e) {
-    echo "KRA API Error ({$e->getErrorCode()}): {$e->getMessage()}\n";
+    $response = $etims->savePurchase($payload);
     
-    // Get full KRA response for debugging
+    if ($response['resultCd'] === '000') {
+        echo "✅ Success: {$response['resultMsg']}\n";
+    } else {
+        echo "❌ Business error ({$response['resultCd']}): {$response['resultMsg']}\n";
+    }
+    
+} catch (AuthenticationException $e) {
+    echo "❌ Auth failed: {$e->getMessage()}\n";
+    
+} catch (ApiException $e) {
+    echo "❌ API error ({$e->getErrorCode()}): {$e->getMessage()}\n";
+    
+    // Get full KRA response
     $details = $e->getDetails();
-    if ($details && isset($details['resultMsg'])) {
+    if (isset($details['resultMsg'])) {
         echo "KRA Message: {$details['resultMsg']}\n";
     }
-} catch (\KraEtimsSdk\Exceptions\AuthenticationException $e) {
-    echo "Authentication failed: {$e->getMessage()}\n";
     
-    // Attempt token refresh
-    try {
-        $auth->token(true); // Force refresh
-        // Retry operation...
-    } catch (\Throwable $ex) {
-        echo "Token refresh failed: {$ex->getMessage()}\n";
+} catch (ValidationException $e) {
+    echo "❌ Validation failed:\n";
+    foreach ($e->getErrors() as $field => $msg) {
+        echo "  • {$field}: {$msg}\n";
     }
 }
 ```
 
-### Comprehensive KRA Error Codes
-
+### Common KRA Error Codes
 | Code | Meaning | Solution |
 |------|---------|----------|
-| `0000` | Success | ✅ Operation completed |
-| `901` | "It is not valid device" | Use KRA-approved device serial |
-| `902` | "Invalid cmcKey" | Re-initialize OSCU to get fresh cmcKey |
+| `000` | Success | ✅ Operation completed |
 | `500` | "Check request body" | Validate payload against Postman schema |
-| `501` | "Mandatory information missing" | Check required fields per endpoint |
+| `501` | "Mandatory information missing" | Check required fields |
 | `502` | "Invalid format" | Fix date formats / data types |
-| `503` | "Data not found" | Verify TIN/branch/item exists in KRA system |
+| `503` | "Data not found" | Verify TIN/branch/item exists |
 | `504` | "Duplicate data" | Use unique invoice number |
-| `505` | "Data relationship error" | Check parent-child relationships (e.g., item composition) |
-| `401` | "Unauthorized" | Check token validity header |
-| `429` | "Rate limit exceeded" | Implement request throttling (max 100 req/min) |
+| `401` | "Unauthorized" | Check token validity |
 
 ---
 
 ## Troubleshooting
 
-### ❌ "It is not valid device" (resultCd: 901)
-
-**Cause**: Device serial not registered with KRA sandbox  
-**Solution**:
-1. Email `timsupport@kra.go.ke` with subject:  
-   `"Request for OSCU Sandbox Test Credentials - [Your Company Name] - PIN: [Your PIN]"`
-2. Use **static** approved serial (e.g., `dvcv1130`) – never generate dynamically
-3. Verify TIN/branch ID match registered device
-
-### ❌ "Invalid cmcKey" (resultCd: 902)
-
-**Cause**: cmcKey expired or not set in config  
-**Solution**:
+### ❌ "cURL error 3: URL using bad/illegal format"
+**Cause**: Trailing spaces in base URLs (common copy-paste error)  
+**Fix**: Verify NO trailing spaces in config URLs:
 ```php
-// After initialization:
-$config['oscu']['cmc_key'] = $response['cmcKey'];
-$client = new EtimsClient($config, $auth); // MUST recreate client
+// WRONG (trailing spaces):
+'base_url' => 'https://etims-api-sbx.kra.go.ke/etims-api  '
+
+// CORRECT:
+'base_url' => 'https://etims-api-sbx.kra.go.ke/etims-api'
 ```
 
-### ❌ Trailing spaces in URLs
-
-**Cause**: Copy-paste errors from documentation  
-**Solution**: Always use `trim()` on URLs:
+### ❌ "cmcKey not found" in branch operations
+**Cause**: Skipping `selectInitOsdcInfo()` before `saveBranchUser`/`saveBranchInsurance`  
+**Fix**: 
 ```php
-'token_url' => trim('https://sbx.kra.go.ke/v1/token/generate'),
+// MUST execute BEFORE branch operations
+$init = $etims->selectInitOsdcInfo([...]);
+$config['oscu']['cmc_key'] = $init['cmcKey'];
+$etims = new EtimsClient($config, $auth); // Recreate client
 ```
 
-### ❌ Invoice number rejected
-
+### ❌ Invoice number rejected (`resultCd: 500`)
 **Cause**: Using string prefix (`INV001`) instead of integer  
-**Solution**: Use sequential integers starting from 1:
+**Fix**: Use sequential integers:
 ```php
-'invcNo' => 1, // ✅ Correct
+'invcNo' => 1,  // ✅ Correct
 // NOT 'INV001' ❌
 ```
 
----
-
-## Automated Testing Requirements
-
-KRA mandates successful completion of automated tests before verification:
-
-### Test Execution Flow
-1. Run integration tests against sandbox environment
-2. System validates:
-   - Token generation
-   - OSCU initialization
-   - Code list retrieval
-   - Item creation
-   - Sales transaction with full tax breakdown
-   - Invoice retrieval
-3. Upon success, system provides **1-hour window** to upload artifacts
-
-### Required Artifacts (Upload Within 1 Hour)
-| Artifact | Format | Requirements |
-|----------|--------|--------------|
-| Item Creation Screenshot | PNG/JPEG | Must show item code, tax category, price |
-| Invoice Generation Screenshot | PNG/JPEG | Must show OSCU signatures, QR code |
-| Invoice Copy | PDF | Full invoice with all KRA-mandated fields |
-| Credit Note Copy | PDF | Must show original invoice reference |
-
-> ⚠️ **Failure to upload within 1 hour** = Test invalidated → Must re-run entire test suite
-
----
-
-## KYC Documentation Checklist
-
-### Third-Party Integrators (All Required)
-- [ ] eTIMS Bio Data Form (completed with director details)
-- [ ] Certificate of Incorporation + CR12 (or Business Registration Certificate)
-- [ ] Valid Business Permit (current year)
-- [ ] National IDs of all directors/partners
-- [ ] Company Tax Compliance Certificate (valid for current year)
-- [ ] Proof of 3+ qualified technical staff:
-  - CVs showing PHP/Java/C# experience
-  - Certifications (e.g., AWS, Azure, KRA eTIMS training)
-  - Employment contracts showing system administration duties
-- [ ] Notarized solvency declaration (signed by director + notary public)
-- [ ] Technology Architecture document:
-  - System diagram showing TIS ↔ OSCU data flow
-  - Database schema for invoice storage
-  - Security measures (encryption, access controls)
-  - Disaster recovery plan
-
-### Self-Integrators (Minimal Set)
-- [ ] eTIMS Bio Data Form
-- [ ] Company Tax Compliance Certificate
-- [ ] National ID of sole proprietor/director
-- [ ] Technology Architecture document (simplified)
-
----
-
-## Go-Live Process
-
-### For Third-Party Integrators
-1. Upon KYC approval, receive SLA template via Developer Portal
-2. Complete SLA with company details and authorized signatory
-3. Email signed SLA to `timsupport@kra.go.ke` with subject:  
-   `"SLA Execution with KRA - [Your Company Name]"`
-4. Await KRA approval (5-7 business days)
-5. Receive production keys via Developer Portal:
-   - Production consumer key/secret
-6. Deploy to production environment (`api.developer.go.ke`)
-7. Monitor compliance for first 30 days (KRA conducts spot checks)
-
-### For Self-Integrators
-1. Receive interim approval letter after KYC verification
-2. Receive production keys via Developer Portal
-3. Deploy directly to production environment
-4. No SLA execution required
-
-> 💡 **Production URL**: `https://api.developer.go.ke/etims-oscu/api/v1`  
-> ⚠️ **Never use sandbox credentials in production** – KRA monitors environment separation strictly
+### ❌ "Device serial number invalid" during initialization
+**Cause**: Sandbox accepts ANY serial value (no pre-registration required for OSCU API)  
+**Fix**: Use any alphanumeric value:
+```php
+'dvcSrlNo' => 'dvc12345', // Any value works in sandbox
+```
 
 ---
 
@@ -756,15 +381,13 @@ KRA mandates successful completion of automated tests before verification:
 ### KRA Official Support Channels
 | Purpose | Contact | Expected Response |
 |---------|---------|-------------------|
-| Sandbox credentials & device registration | `timsupport@kra.go.ke` | 1-3 business days |
-| API technical issues & Postman collection | `apisupport@kra.go.ke` | 24-48 hours |
-| Developer Portal access issues | `apisupport@kra.go.ke` | 24 hours |
-| Verification meeting scheduling | Developer Portal UI | Instant (self-service) |
-| SLA execution queries | `timsupport@kra.go.ke` | 3-5 business days |
+| OSCU API technical issues | `apisupport@kra.go.ke` | 24-48 hours |
+| Sandbox credentials | `timsupport@kra.go.ke` | 1-3 business days |
+| Developer Portal access | `apisupport@kra.go.ke` | 24 hours |
 
 ### SDK Support
 - **GitHub Issues**: [github.com/paybillke/kra-etims-php-sdk/issues](https://github.com/paybillke/kra-etims-php-sdk/issues)
-- **Email**: ebartile@gmail.com (for integration guidance)
+- **Email**: ebartile@gmail.com (integration guidance)
 - **Emergency Hotline**: +254757807150 (business hours only)
 
 > ℹ️ **Disclaimer**: This SDK is not officially endorsed by Kenya Revenue Authority. Always verify integration requirements with KRA before production deployment. KRA may update API specifications without notice – monitor [GavaConnect Portal](https://developer.go.ke) for updates.
@@ -777,16 +400,29 @@ MIT License
 
 Copyright © 2024-2026 Bartile Emmanuel / Paybill Kenya
 
-Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ---
 
 ## Attribution
 
-This SDK was developed by **Bartile Emmanuel** for Paybill Kenya to simplify KRA eTIMS OSCU integration for Kenyan businesses. Special thanks to KRA for providing comprehensive API documentation and Postman collections.
+This SDK was developed by **Bartile Emmanuel** for Paybill Kenya to simplify KRA eTIMS OSCU API integration for Kenyan businesses. Special thanks to KRA for providing comprehensive API documentation and Postman collections.
 
-> 🇰🇪 **Proudly Made in Kenya** – Supporting digital tax compliance for East Africa's largest economy.
+> 🇰🇪 **Proudly Made in Kenya** – Supporting digital tax compliance for East Africa's largest economy.  
+> *Tested on KRA Sandbox • Built with PHP 8.1+ • Production Ready*

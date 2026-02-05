@@ -5,8 +5,49 @@ namespace KraEtimsSdk\Services;
 use KraEtimsSdk\Exceptions\ApiException;
 use KraEtimsSdk\Exceptions\AuthenticationException;
 
+// ----------------- OSCU ENDPOINTS -----------------
 abstract class BaseClient
 {
+    private static array $endpoints = [
+        // INITIALIZATION
+        'selectInitOsdcInfo'       => '/selectInitOsdcInfo', // DeviceVerificationReq
+
+        // CODE LIST
+        'selectCodeList'           => '/selectCodeList',     // CodeSearchReq
+
+        // CUSTOMER
+        'selectCustomer'            => '/selectCustomer',     // CustSearchReq
+
+        // NOTICE
+        'selectNoticeList'          => '/selectNoticeList',   // NoticeSearchReq
+
+        // ITEM
+        'selectItemClsList'         => '/selectItemClsList',  // ItemClsSearchReq
+        'selectItemList'            => '/selectItemList',     // ItemSearchReq
+        'saveItem'              => '/saveItem',           // ItemSaveReq
+        'SaveItemComposition'      => '/saveItemComposition',// SaveItemComposition
+
+        // BRANCH / CUSTOMER
+        'selectBhfList'             => '/selectBhfList',      // BhfSearchReq
+        'saveBhfCustomer'           => '/saveBhfCustomer',    // BhfCustSaveReq
+        'saveBhfUser'           => '/saveBhfUser',        // BhfUserSaveReq
+        'saveBhfInsurance'      => '/saveBhfInsurance',   // BhfInsuranceSaveReq
+
+        // IMPORTED ITEMS
+        'selectImportItemList'      => '/selectImportItemList', // ImportItemSearchReq
+        'updateImportItem'      => '/updateImportItem',     // ImportItemUpdateReq
+
+        // SALES / PURCHASES
+        'TrnsSalesSaveWrReq'       => '/saveTrnsSalesOsdc',           // TrnsSalesSaveWrReq
+        'selectTrnsPurchaseSalesList'     => '/selectTrnsPurchaseSalesList', // TrnsPurchaseSalesReq
+        'insertTrnsPurchase'      => '/insertTrnsPurchase',          // TrnsPurchaseSaveReq
+
+        // STOCK
+        'selectStockMoveList'             => '/selectStockMoveList', // StockMoveReq
+        'insertStockIO'           => '/insertStockIO',       // StockIOSaveReq
+        'saveStockMaster'       => '/saveStockMaster',     // StockMasterSaveReq
+    ];
+
     public function __construct(
         protected array $config,
         protected AuthClient $auth
@@ -32,11 +73,11 @@ abstract class BaseClient
             );
         }
 
-        if (!isset($this->config['endpoints'][$key])) {
+        if (!isset(self::$endpoints[$key])) {
             throw new ApiException("Endpoint [$key] not configured", 500);
         }
 
-        return $this->config['endpoints'][$key];
+        return self::$endpoints[$key];
     }
 
     protected function get(string $endpointKey, array $query = []): array
@@ -106,14 +147,14 @@ abstract class BaseClient
 
     /**
      * Build headers with endpoint-specific logic
-     * @param string $endpoint Full endpoint path (e.g., '/initialize')
+     * @param string $endpoint Full endpoint path (e.g., '/selectInitOsdcInfo')
      */
     protected function buildHeaders(string $endpoint): array
     {
         $env = $this->config['env'];
 
         // 🚨 INITIALIZATION EXCEPTION: Only auth headers
-        if (str_ends_with($endpoint, '/initialize')) {
+        if (str_ends_with($endpoint, '/selectInitOsdcInfo')) {
             return [
                 'Authorization: Bearer ' . $this->auth->token(),
                 'Content-Type: application/json',
@@ -144,15 +185,15 @@ abstract class BaseClient
     protected function unwrap(array $response): array
     {
         $json = $response['json'];
+        $body = $response['body'];
         $status = $response['status'];
-
         // KRA business error
-        if (!empty($json['resultCd']) && $json['resultCd'] !== '0000') {
+        if (!empty($body['resultCd']) && $body['resultCd'] !== '0000') {
             throw new ApiException(
-                $json['resultMsg'] ?? 'KRA business error',
+                $body['resultMsg'] ?? 'KRA business error',
                 400,
-                $json['resultCd'],
-                $json
+                $body['resultCd'],
+                $body
             );
         }
 

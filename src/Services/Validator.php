@@ -31,12 +31,12 @@ class Validator
              * ----------------------------- */
             'lastReqOnly' => v::key('lastReqDt', $lastReqDt),
 
-            'custSearchReq' => v::key('custmTin', $tin),
+            'selectCustomer' => v::key('custmTin', $tin),
 
             /* -----------------------------
              * CUSTOMER / BRANCH
              * ----------------------------- */
-            'branchCustomer' => v::key('custNo', v::stringType()->notEmpty())
+            'saveBhfCustomer' => v::key('custNo', v::stringType()->notEmpty())
                 ->key('custTin', $tin)
                 ->key('custNm', v::stringType()->notEmpty())
                 ->key('useYn', v::in(['Y', 'N']))
@@ -45,7 +45,7 @@ class Validator
                 ->key('modrId', v::optional(v::stringType()))
                 ->key('modrNm', v::optional(v::stringType())),
 
-            'branchUser' => v::key('userId', v::stringType()->notEmpty())
+            'saveBhfUser' => v::key('userId', v::stringType()->notEmpty())
                 ->key('userNm', v::stringType()->notEmpty())
                 ->key('pwd', v::stringType()->notEmpty())
                 ->key('useYn', v::in(['Y', 'N']))
@@ -54,7 +54,7 @@ class Validator
                 ->key('modrId', v::optional(v::stringType()))
                 ->key('modrNm', v::optional(v::stringType())),
 
-            'branchInsurance' => v::key('isrccCd', v::stringType()->notEmpty())
+            'saveBhfInsurance' => v::key('isrccCd', v::stringType()->notEmpty())
                 ->key('isrccNm', v::stringType()->notEmpty())
                 ->key('isrcRt', v::numericVal()->min(0))
                 ->key('useYn', v::in(['Y', 'N']))
@@ -93,13 +93,114 @@ class Validator
                 ->key('modrNm', v::stringType()->notEmpty()),
 
 
-            'itemComposition' => v::key('itemCd', v::stringType()->notEmpty())
+            'saveItemComposition' => v::key('itemCd', v::stringType()->notEmpty())
                 ->key('cpstItemCd', v::stringType()->notEmpty())
                 ->key('cpstQty', v::numericVal()->min(0.001))
                 ->key('regrId', v::stringType()->notEmpty())
                 ->key('regrNm', v::stringType()->notEmpty())
                 ->key('modrId', v::optional(v::stringType()))
                 ->key('modrNm', v::optional(v::stringType())),
+
+            'saveTrnsSalesOsdc' => v::key('trdInvcNo', v::oneOf(
+                    v::stringType()->length(null, 50),
+                    v::numericVal()
+                ))
+
+                ->key('invcNo', v::intType()->min(0))
+                ->key('orgInvcNo', v::intType()->min(0))
+
+                ->key('custTin', v::optional(v::oneOf(
+                    v::stringType()->length(11, 11),
+                    v::nullType()
+                )))
+
+                ->key('custNm', v::optional(v::oneOf(
+                    v::stringType()->length(null, 60),
+                    v::nullType()
+                )))
+
+                ->key('rcptTyCd', v::stringType()->notEmpty()->length(1, 5))
+                ->key('pmtTyCd', v::optional(v::stringType()->length(1, 5)))
+                ->key('salesSttsCd', v::stringType()->notEmpty()->length(1, 5))
+
+                ->key('cfmDt', v::stringType()->regex('/^\d{14}$/'))   // yyyyMMddhhmmss
+                ->key('salesDt', v::stringType()->regex('/^\d{8}$/'))  // yyyyMMdd
+
+                ->key('stockRlsDt', v::optional(v::stringType()->regex('/^\d{14}$/')))
+                ->key('cnclReqDt', v::optional(v::oneOf(v::stringType()->regex('/^\d{14}$/'), v::nullType())))
+                ->key('cnclDt', v::optional(v::oneOf(v::stringType()->regex('/^\d{14}$/'), v::nullType())))
+                ->key('rfdDt', v::optional(v::oneOf(v::stringType()->regex('/^\d{14}$/'), v::nullType())))
+                ->key('rfdRsnCd', v::optional(v::oneOf(v::stringType()->length(1, 5), v::nullType())))
+
+                ->key('totItemCnt', v::intType()->min(1))
+
+                ->key('taxblAmtA', v::number())
+                ->key('taxblAmtB', v::number())
+                ->key('taxblAmtC', v::number())
+                ->key('taxblAmtD', v::number())
+                ->key('taxblAmtE', v::number())
+
+                ->key('taxRtA', v::number())
+                ->key('taxRtB', v::number())
+                ->key('taxRtC', v::number())
+                ->key('taxRtD', v::number())
+                ->key('taxRtE', v::number())
+
+                ->key('taxAmtA', v::number())
+                ->key('taxAmtB', v::number())
+                ->key('taxAmtC', v::number())
+                ->key('taxAmtD', v::number())
+                ->key('taxAmtE', v::number())
+
+                ->key('totTaxblAmt', v::number())
+                ->key('totTaxAmt', v::number())
+                ->key('totAmt', v::number())
+
+                ->key('prchrAcptcYn', v::in(['Y', 'N']))
+
+                ->key('remark', v::optional(v::oneOf(
+                    v::stringType()->length(null, 400),
+                    v::nullType()
+                )))
+
+                ->key('regrId', v::stringType()->notEmpty()->length(null, 20))
+                ->key('regrNm', v::stringType()->notEmpty()->length(null, 60))
+                ->key('modrId', v::stringType()->notEmpty()->length(null, 20))
+                ->key('modrNm', v::stringType()->notEmpty()->length(null, 60))
+
+                ->key('receipt', v::key('rcptPbctDt', v::stringType()->regex('/^\d{14}$/'))
+                    ->key('prchrAcptcYn', v::in(['Y', 'N']))
+                    ->key('custTin', v::optional(v::oneOf(v::stringType()->length(11, 11), v::nullType())))
+                    ->key('custMblNo', v::optional(v::oneOf(v::stringType()->length(null, 20), v::nullType())))
+                    ->key('trdeNm', v::optional(v::oneOf(v::stringType()->length(null, 20), v::nullType())))
+                    ->key('adrs', v::optional(v::oneOf(v::stringType()->length(null, 200), v::nullType())))
+                    ->key('topMsg', v::optional(v::oneOf(v::stringType()->length(null, 20), v::nullType())))
+                    ->key('btmMsg', v::optional(v::oneOf(v::stringType()->length(null, 20), v::nullType())))
+                )
+
+                ->key('itemList', v::arrayType()->notEmpty()->each(
+                    v::key('itemSeq', v::intType()->min(1))
+                        ->key('itemCd', v::stringType()->notEmpty()->length(null, 20))
+                        ->key('itemNm', v::stringType()->notEmpty()->length(null, 200))
+                        ->key('pkgUnitCd', v::stringType()->notEmpty()->length(null, 5))
+                        ->key('pkg', v::number())
+                        ->key('qtyUnitCd', v::stringType()->notEmpty()->length(null, 5))
+                        ->key('qty', v::number())
+                        ->key('prc', v::number())
+                        ->key('splyAmt', v::number())
+                        ->key('dcRt', v::number())
+                        ->key('dcAmt', v::number())
+                        ->key('taxTyCd', v::stringType()->notEmpty()->length(null, 5))
+                        ->key('taxblAmt', v::number())
+                        ->key('taxAmt', v::number())
+                        ->key('totAmt', v::number())
+                        ->key('itemClsCd', v::optional(v::stringType()->length(null, 10)))
+                        ->key('bcd', v::optional(v::oneOf(v::stringType()->length(null, 20), v::nullType())))
+                        ->key('isrccCd', v::optional(v::oneOf(v::stringType()->length(null, 10), v::nullType())))
+                        ->key('isrccNm', v::optional(v::oneOf(v::stringType()->length(null, 100), v::nullType())))
+                        ->key('isrcRt', v::optional(v::oneOf(v::number(), v::nullType())))
+                        ->key('isrcAmt', v::optional(v::oneOf(v::number(), v::nullType())))
+                )),
 
             /* -----------------------------
              * IMPORTED ITEM
@@ -118,7 +219,7 @@ class Validator
             /* -----------------------------
              * STOCK
              * ----------------------------- */
-            'stockMaster' => v::key('itemCd', v::stringType()->notEmpty()->length(1, 20))
+            'saveStockMaster' => v::key('itemCd', v::stringType()->notEmpty()->length(1, 20))
                 ->key('rsdQty', v::numericVal()->min(0))          // Remaining quantity
                 ->key('regrId', v::stringType()->notEmpty()->length(1, 20))
                 ->key('regrNm', v::stringType()->notEmpty()->length(1, 60))
@@ -190,7 +291,7 @@ class Validator
                     ->key('itemExprDt', v::optional(v::stringType()->length(8, 14)))
                 )),
 
-            'saveStockIO' => v::key('tin', v::stringType()->notEmpty()->length(11, 11))
+            'insertStockIO' => v::key('tin', v::stringType()->notEmpty()->length(11, 11))
                 ->key('bhfId', v::stringType()->notEmpty()->length(2, 2))
                 ->key('sarNo', v::intType()->min(0))
                 ->key('orgSarNo', v::intType()->min(0))

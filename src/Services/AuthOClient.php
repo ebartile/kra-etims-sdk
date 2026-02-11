@@ -4,7 +4,7 @@ namespace KraEtimsSdk\Services;
 
 use RuntimeException;
 
-class AuthClient
+class AuthOClient
 {
     private string $cacheFile;
 
@@ -64,7 +64,13 @@ class AuthClient
             throw new RuntimeException('Consumer key/secret not configured');
         }
 
-        $url = rtrim($auth['token_url'], '/')
+        if (($this->config['env'] ?? null) === 'sbx') {
+            $token_url = 'https://sbx.kra.go.ke/v1/token/generate';
+        } else {
+            $token_url = 'https://api.kra.go.ke/v1/token/generate';
+        }
+
+        $url = rtrim($token_url, '/')
             . '?grant_type=client_credentials';
 
         $headers = [

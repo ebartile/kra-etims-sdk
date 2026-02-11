@@ -6,57 +6,62 @@ use KraEtimsSdk\Exceptions\ApiException;
 use KraEtimsSdk\Exceptions\AuthenticationException;
 
 // ----------------- OSCU ENDPOINTS -----------------
-abstract class BaseClient
+abstract class BaseOClient
 {
     private static array $endpoints = [
         // INITIALIZATION
-        'selectInitOsdcInfo'       => '/selectInitOsdcInfo', // DeviceVerificationReq
+        'selectInitOsdcInfo'       => '/selectInitOsdcInfo',
 
         // CODE LIST
-        'selectCodeList'           => '/selectCodeList',     // CodeSearchReq
+        'selectCodeList'           => '/selectCodeList',
 
         // CUSTOMER
-        'selectCustomer'            => '/selectCustomer',     // CustSearchReq
+        'selectCustomer'            => '/selectCustomer', 
 
         // NOTICE
-        'selectNoticeList'          => '/selectNoticeList',   // NoticeSearchReq
+        'selectNoticeList'          => '/selectNoticeList',  
 
         // ITEM
-        'selectItemClsList'         => '/selectItemClsList',  // ItemClsSearchReq
-        'selectItemList'            => '/selectItemList',     // ItemSearchReq
-        'saveItem'              => '/saveItem',           // ItemSaveReq
-        'SaveItemComposition'      => '/saveItemComposition',// SaveItemComposition
+        'selectItemClsList'         => '/selectItemClsList',
+        'selectItemList'            => '/selectItemList', 
+        'saveItem'              => '/saveItem',          
+        'saveItemComposition'      => '/saveItemComposition',
 
         // BRANCH / CUSTOMER
-        'selectBhfList'             => '/selectBhfList',      // BhfSearchReq
-        'saveBhfCustomer'           => '/saveBhfCustomer',    // BhfCustSaveReq
-        'saveBhfUser'           => '/saveBhfUser',        // BhfUserSaveReq
-        'saveBhfInsurance'      => '/saveBhfInsurance',   // BhfInsuranceSaveReq
+        'selectBhfList'             => '/selectBhfList',    
+        'saveBhfCustomer'           => '/saveBhfCustomer', 
+        'saveBhfUser'           => '/saveBhfUser',    
+        'saveBhfInsurance'      => '/saveBhfInsurance', 
 
         // IMPORTED ITEMS
-        'selectImportItemList'      => '/selectImportItemList', // ImportItemSearchReq
-        'updateImportItem'      => '/updateImportItem',     // ImportItemUpdateReq
+        'selectImportItemList'      => '/selectImportItemList',
+        'updateImportItem'      => '/updateImportItem', 
 
         // SALES / PURCHASES
-        'TrnsSalesSaveWrReq'       => '/saveTrnsSalesOsdc',           // TrnsSalesSaveWrReq
-        'selectTrnsPurchaseSalesList'     => '/selectTrnsPurchaseSalesList', // TrnsPurchaseSalesReq
-        'insertTrnsPurchase'      => '/insertTrnsPurchase',          // TrnsPurchaseSaveReq
+        'saveTrnsSalesOsdc'       => '/saveTrnsSalesOsdc',     
+        'selectTrnsPurchaseSalesList'     => '/selectTrnsPurchaseSalesList', 
+        'insertTrnsPurchase'      => '/insertTrnsPurchase',    
 
         // STOCK
-        'selectStockMoveList'             => '/selectStockMoveList', // StockMoveReq
-        'insertStockIO'           => '/insertStockIO',       // StockIOSaveReq
-        'saveStockMaster'       => '/saveStockMaster',     // StockMasterSaveReq
+        'selectStockMoveList'             => '/selectStockMoveList', 
+        'insertStockIO'           => '/insertStockIO',    
+        'saveStockMaster'       => '/saveStockMaster',   
     ];
 
     public function __construct(
         protected array $config,
-        protected AuthClient $auth
+        protected AuthOClient $auth
     ) {}
 
     protected function baseUrl(): string
     {
-        $env = $this->config['env'];
-        return rtrim($this->config['api'][$env]['base_url'], '/');
+        if (($this->config['env'] ?? null) === 'sbx') {
+            $url = 'https://etims-api-sbx.kra.go.ke/etims-api';
+        } else {
+            $url = 'https://etims-api.kra.go.ke/etims-api';
+        }
+
+        return rtrim(trim($url), '/');
     }
 
     protected function timeout(): int
@@ -184,31 +189,70 @@ abstract class BaseClient
 
     protected function unwrap(array $response): array
     {
-        $json = $response['json'];
-        $body = $response['body'];
-        $status = $response['status'];
-        // KRA business error
-        if (!empty($body['resultCd']) && $body['resultCd'] !== '000') {
-            throw new ApiException(
-                $body['resultMsg'] ?? 'KRA business error',
-                400,
-                $body['resultCd'],
-                $body
+        $json   = $response['json'] ?? [];
+        $body   = $response['body'] ?? null;
+        $status = $response['status'] ?? 0;
+
+        $resultCd  = $json['resultCd']  ?? null;
+        $resultMsg = $json['resultMsg'] ?? 'Unknown API response';
+
+        // ---------------------------------
+        // HTTP-level handling
+        // ---------------------------------
+        if ($status === 401) {
+            throw new AuthenticationException(
+                'Unauthorized: Invalid or expired token',
+                401
             );
         }
 
-        // HTTP success
-        if ($status >= 200 && $status < 300) {
-            return $json;
+        if ($status < 200 || $status >= 300) {
+            $message = $json['fault']['faultstring']
+                ?? (is_string($body) ? $body : 'HTTP error');
+
+            throw new ApiException(trim($message), $status);
         }
 
-        // Authentication errors
-        if ($status === 401) {
-            throw new AuthenticationException('Unauthorized: Invalid or expired token', 401);
+        // ---------------------------------
+        // Business-level handling
+        // ---------------------------------
+        if ($resultCd === null) {
+            return $json; // Some endpoints may not return resultCd
         }
 
-        // Generic HTTP errors
-        $message = $json['fault']['faultstring'] ?? $response['body'] ?? 'HTTP error';
-        throw new ApiException(trim($message), $status);
+        switch ($resultCd) {
+            case '000':
+            case '001':
+                return $json; // ✅ Success
+
+            default:
+                // Client errors (891–899)
+                if ($resultCd >= '891' && $resultCd <= '899') {
+                    throw new ApiException(
+                        "Client Error ({$resultCd}): {$resultMsg}",
+                        400,
+                        $resultCd,
+                        $json
+                    );
+                }
+
+                // Server errors (900+)
+                if ($resultCd >= '900') {
+                    throw new ApiException(
+                        "Server Error ({$resultCd}): {$resultMsg}",
+                        500,
+                        $resultCd,
+                        $json
+                    );
+                }
+
+                // Fallback business error
+                throw new ApiException(
+                    "Business Error ({$resultCd}): {$resultMsg}",
+                    400,
+                    $resultCd,
+                    $json
+                );
+        }
     }
 }

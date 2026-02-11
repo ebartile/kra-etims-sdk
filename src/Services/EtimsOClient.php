@@ -2,11 +2,11 @@
 
 namespace KraEtimsSdk\Services;
 
-class EtimsClient extends BaseClient
+class EtimsOClient extends BaseOClient
 {
     protected Validator $validator;
 
-    public function __construct(array $config, AuthClient $auth)
+    public function __construct(array $config, AuthOClient $auth)
     {
         parent::__construct($config, $auth);
         $this->validator = new Validator();
@@ -46,7 +46,7 @@ class EtimsClient extends BaseClient
     {
         return $this->post(
             'selectCustomer',
-            $this->validate($data, 'custSearchReq')
+            $this->validate($data, 'selectCustomer')
         );
     }
 
@@ -62,7 +62,7 @@ class EtimsClient extends BaseClient
     {
         return $this->post(
             'saveBhfCustomer',
-            $this->validate($data, 'branchCustomer')
+            $this->validate($data, 'saveBhfCustomer')
         );
     }
 
@@ -70,7 +70,7 @@ class EtimsClient extends BaseClient
     {
         return $this->post(
             'saveBhfUser',
-            $this->validate($data, 'branchUser')
+            $this->validate($data, 'saveBhfUser')
         );
     }
 
@@ -78,7 +78,7 @@ class EtimsClient extends BaseClient
     {
         return $this->post(
             'saveBhfInsurance',
-            $this->validate($data, 'branchInsurance')
+            $this->validate($data, 'saveBhfInsurance')
         );
     }
 
@@ -112,8 +112,8 @@ class EtimsClient extends BaseClient
     public function saveItemComposition(array $data): array
     {
         return $this->post(
-            'SaveItemComposition',
-            $this->validate($data, 'itemComposition')
+            'saveItemComposition',
+            $this->validate($data, 'saveItemComposition')
         );
     }
 
@@ -158,8 +158,8 @@ class EtimsClient extends BaseClient
     public function saveSalesTransaction(array $data): array
     {
         return $this->post(
-            'TrnsSalesSaveWrReq',
-            $this->validate($data, 'lastReqOnly')
+            'saveTrnsSalesOsdc',
+            $this->validate($data, 'saveTrnsSalesOsdc')
         );
     }
 
@@ -178,7 +178,7 @@ class EtimsClient extends BaseClient
     {
         return $this->post(
             'insertStockIO',
-            $this->validate($data, 'saveStockIO')
+            $this->validate($data, 'insertStockIO')
         );
     }
 
@@ -186,7 +186,7 @@ class EtimsClient extends BaseClient
     {
         return $this->post(
             'saveStockMaster',
-            $this->validate($data, 'stockMaster')
+            $this->validate($data, 'saveStockMaster')
         );
     }
 

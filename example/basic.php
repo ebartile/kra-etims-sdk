@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use KraEtimsSdk\Services\AuthClient;
-use KraEtimsSdk\Services\EtimsClient;
+use KraEtimsSdk\Services\AuthOClient;
+use KraEtimsSdk\Services\EtimsOClient;
 use KraEtimsSdk\Exceptions\ApiException;
 use KraEtimsSdk\Exceptions\AuthenticationException;
 
@@ -34,13 +34,13 @@ $config = [
     'cache_file' => sys_get_temp_dir() . '/kra_etims_token.json',
     'auth' => [
         'sbx' => [
-            'token_url'       => 'https://sbx.kra.go.ke/v1/token/generate',
             'consumer_key'    => getenv('KRA_CONSUMER_KEY'),
             'consumer_secret' => getenv('KRA_CONSUMER_SECRET'),
         ],
-    ],
-    'api' => [
-        'sbx' => ['base_url' => 'https://etims-api-sbx.kra.go.ke/etims-api']
+        'prod' => [
+            'consumer_key'    => getenv('KRA_CONSUMER_KEY'),
+            'consumer_secret' => getenv('KRA_CONSUMER_SECRET'),
+        ],
     ],
     'http' => ['timeout' => 30],
     'oscu' => [
@@ -52,8 +52,8 @@ $config = [
 ];
 
 /* ---------------------------- Bootstrap SDK ---------------------------- */
-$auth  = new AuthClient($config);
-$etims = new EtimsClient($config, $auth);
+$auth  = new AuthOClient($config);
+$etims = new EtimsOClient($config, $auth);
 
 /* ---------------------------- STEP 1: AUTH ---------------------------- */
 headerLine('STEP 1: AUTHENTICATION');
